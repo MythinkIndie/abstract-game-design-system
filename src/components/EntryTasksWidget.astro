@@ -135,7 +135,7 @@ if (taskCategory) {
   // Checkboxes de tareas
   document.querySelectorAll('.entry-task-checkbox').forEach(checkbox => {
     checkbox.addEventListener('change', async (e) => {
-      const target = e.target as HTMLInputElement;
+      const target = e.target;
       const taskId = target.dataset.taskId;
       const isCompleted = target.checked;
       
@@ -179,58 +179,143 @@ if (taskCategory) {
   });
 
   async function loadAvailableTasks() {
-    try {
-      const response = await fetch(`/api/tasks?category_id=${categoryId}`);
-      const tasks = await response.json();
+  try {
+    const response = await fetch(`/api/tasks?category_id=${categoryId}`);
+    const tasks = await response.json();
+    
+    const container = document.getElementById('availableTasksList');
+    if (!container) return;
+    
+    if (tasks.length === 0) {
+      container.innerHTML = `
+        <p class="text-sm text-gray-500 text-center py-8">
+          No hay tareas disponibles para esta categoría
+        </p>
+      `;
+      return;
+    }
+    
+    container.innerHTML = tasks.map((task) => {
+      // Verificar si ya está vinculada
+      const isLinked = task.data.applies_to_all || 
+                       (task.data.specific_entry_ids && task.data.specific_entry_ids.includes(entryId));
       
-      const container = document.getElementById('availableTasksList');
-      if (!container) return;
-      
-      container.innerHTML = tasks.map((task: any) => `
-        <div class="flex items-center gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50">
+      return `
+        <div class="flex items-center gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition">
           <input 
             type="checkbox" 
             class="link-task-checkbox w-5 h-5 rounded"
             data-task-id="${task.id}"
-            ${task.data.applies_to_all || (task.data.specific_entry_ids && task.data.specific_entry_ids.includes(entryId)) ? 'checked disabled' : ''}
+            ${isLinked ? 'checked' : ''}
+            ${task.data.applies_to_all ? 'disabled title="Esta tarea aplica a todas las entradas"' : ''}
           />
           <div class="flex-1">
             <p class="font-medium text-gray-900">${task.data.title}</p>
-            <p class="text-xs text-gray-500">${task.data.priority} • ${task.data.applies_to_all ? 'Todas las entradas' : 'Específicas'}</p>
+            <div class="flex items-center gap-2 mt-1">
+              <span class="text-xs px-2 py-0.5 rounded ${
+                task.data.priority === 'critical' ? 'bg-red-100 text-red-700' :
+                task.data.priority === 'high' ? 'bg-orange-100 text-orange-700' :
+                task.data.priority === 'medium' ? 'bg-blue-100 text-blue-700' :
+                'bg-gray-100 text-gray-600'
+              }">
+                ${task.data.priority}
+              </span>
+              ${task.data.applies_to_all ? 
+                '<span class="text-xs text-purple-600">✨ Todas las entradas</span>' : 
+                task.data.specific_entry_ids && task.data.specific_entry_ids.length > 0 ?
+                `<span class="text-xs text-blue-600">🎯 ${task.data.specific_entry_ids.length} específica(s)</span>` :
+                '<span class="text-xs text-gray-500">Sin asignar</span>'
+              }
+            </div>
           </div>
         </div>
-      `).join('');
-      
-      // Event listeners
-      container.querySelectorAll('.link-task-checkbox').forEach(cb => {
-        cb.addEventListener('change', async (e) => {
-          const checkbox = e.target as HTMLInputElement;
-          const taskId = checkbox.dataset.taskId;
-          
-          try {
-            const response = await fetch(`/api/tasks`, {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                id: taskId,
-                specific_entry_ids: checkbox.checked ? 
-                  [...(task.data.specific_entry_ids || []), entryId] :
-                  (task.data.specific_entry_ids || []).filter((id: string) => id !== entryId)
-              })
-            });
-            
-            if (response.ok) {
-              setTimeout(() => window.location.reload(), 500);
-            }
-          } catch (error) {
-            checkbox.checked = !checkbox.checked;
-            alert('Error');
+      `;
+    }).join('');
+    
+    // Event listeners para checkboxes
+    container.querySelectorAll('.link-task-checkbox').forEach(cb => {
+      cb.addEventListener('change', async (e) => {
+        const checkbox = e.target;
+        const taskId = checkbox.dataset.taskId;
+        
+        // Buscar la tarea en el array
+        const task = tasks.find((t) => t.id === taskId);
+        if (!task) return;
+        
+        // Crear nueva lista de IDs específicos
+        let newSpecificIds = task.data.specific_entry_ids || [];
+        
+        if (checkbox.checked) {
+          // Añadir este entry si no está
+          if (!newSpecificIds.includes(entryId)) {
+            newSpecificIds.push(entryId);
           }
-        });
+        } else {
+          // Quitar este entry
+          newSpecificIds = newSpecificIds.filter((id) => id !== entryId);
+        }
+        
+        try {
+          const response = await fetch(`/api/tasks`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              id: taskId,
+              specific_entry_ids: newSpecificIds
+            })
+          });
+          
+          if (response.ok) {
+            // Actualizar visualmente sin recargar
+            const badge = checkbox.closest('div')?.querySelector('.text-blue-600, .text-gray-500');
+            if (badge) {
+              if (newSpecificIds.length > 0) {
+                badge.textContent = `🎯 ${newSpecificIds.length} específica(s)`;
+                badge.className = 'text-xs text-blue-600';
+              } else {
+                badge.textContent = 'Sin asignar';
+                badge.className = 'text-xs text-gray-500';
+              }
+            }
+            
+            // Mostrar confirmación
+            showToast('Tarea vinculada correctamente');
+          } else {
+            checkbox.checked = !checkbox.checked;
+            alert('Error al vincular tarea');
+          }
+        } catch (error) {
+          console.error('Error:', error);
+          checkbox.checked = !checkbox.checked;
+          alert('Error de red');
+        }
       });
-      
-    } catch (error) {
-      console.error('Error loading tasks:', error);
+    });
+    
+  } catch (error) {
+    console.error('Error loading tasks:', error);
+    const container = document.getElementById('availableTasksList');
+    if (container) {
+      container.innerHTML = `
+        <p class="text-sm text-red-500 text-center py-8">
+          Error al cargar tareas
+        </p>
+      `;
     }
   }
+}
+
+// Helper para mostrar notificaciones (opcional pero mejora UX)
+function showToast(message) {
+  const toast = document.createElement('div');
+  toast.className = 'fixed bottom-4 right-4 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg z-50 animate-fade-in';
+  toast.textContent = message;
+  document.body.appendChild(toast);
+  
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transition = 'opacity 0.3s';
+    setTimeout(() => toast.remove(), 300);
+  }, 2000);
+}
 </script>

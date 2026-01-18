@@ -133,6 +133,68 @@ if (taskData.parent_task_id) {
             <h4 class="text-sm font-medium text-gray-500">Creada</h4>
             <p class="text-gray-900">{new Date((task as any).created_at).toLocaleDateString('es-ES')}</p>
           </div>
+
+          {taskData.assigned_to && (
+            <div>
+              <h4 class="text-sm font-medium text-gray-500">Asignado a</h4>
+              <div class="flex items-center gap-2 mt-1">
+                <div class="w-8 h-8 rounded-full bg-indigo-600 text-white flex items-center justify-center font-semibold text-sm">
+                  {taskData.assigned_to.substring(0, 2).toUpperCase()}
+                </div>
+                <p class="text-gray-900">{taskData.assigned_to}</p>
+              </div>
+            </div>
+          )}
+
+          <!-- Sección de comentarios (al final del contenido) -->
+          {taskData.comments && taskData.comments.length > 0 && (
+            <div class="pt-6 border-t">
+              <h3 class="font-semibold text-gray-900 mb-3">
+                Comentarios ({taskData.comments.length})
+              </h3>
+              <div class="space-y-3">
+                {taskData.comments.map((comment: any) => (
+                  <div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                    <div class="flex items-start gap-3">
+                      <div class="w-8 h-8 rounded-full bg-gray-400 text-white flex items-center justify-center font-semibold text-xs">
+                        {comment.user ? comment.user.substring(0, 2).toUpperCase() : '??'}
+                      </div>
+                      <div class="flex-1">
+                        <div class="flex items-center justify-between mb-1">
+                          <span class="font-medium text-sm text-gray-900">
+                            {comment.user || 'Usuario'}
+                          </span>
+                          <span class="text-xs text-gray-500">
+                            {new Date(comment.timestamp).toLocaleString('es-ES')}
+                          </span>
+                        </div>
+                        <p class="text-sm text-gray-700">{comment.text}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <!-- Formulario para añadir comentario -->
+          <div class="pt-4 border-t">
+            <h4 class="font-semibold text-gray-900 mb-2">Añadir comentario</h4>
+            <div class="flex gap-2">
+              <input 
+                type="text" 
+                id="newComment"
+                placeholder="Escribe un comentario..."
+                class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm"
+              />
+              <button 
+                id="addCommentBtn"
+                class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-medium"
+              >
+                Comentar
+              </button>
+            </div>
+          </div>
         </div>
 
         <!-- Etiquetas -->
@@ -220,6 +282,42 @@ if (taskData.parent_task_id) {
       } catch (error) {
         alert('Error al actualizar');
       }
+    });
+
+    document.getElementById('addCommentBtn')?.addEventListener('click', async () => {
+      const input = document.getElementById('newComment') as HTMLInputElement;
+      const text = input.value.trim();
+      
+      if (!text) return;
+      
+      const taskId = window.location.pathname.split('/').pop();
+      
+      // Obtener tarea actual
+      const response = await fetch(`/api/entries?id=${taskId}`);
+      const task = await response.json();
+      const data = JSON.parse(task.data);
+      
+      // Añadir nuevo comentario
+      const newComment = {
+        user: 'Usuario Actual', // TODO: integrar con sistema de usuarios
+        text: text,
+        timestamp: new Date().toISOString()
+      };
+      
+      if (!data.comments) data.comments = [];
+      data.comments.push(newComment);
+      
+      // Guardar
+      await fetch('/api/entries', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: taskId,
+          data: data
+        })
+      });
+      
+      window.location.reload();
     });
 
     // Eliminar tarea

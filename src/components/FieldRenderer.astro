@@ -23,14 +23,6 @@ const config = field.config ? JSON.parse(field.config) : {};
     />
 )}
 
-{field.type === 'enum' && (
-  <select class="editable-field w-full px-3 py-2 border border-gray-300 rounded-lg">
-    {config.options?.map((opt: any) => (
-      <option value={opt}>{opt}</option>
-    ))}
-  </select>
-)}
-
 {field.type === 'boolean' && (
     <label class="flex items-center gap-2">
         <input 
@@ -45,58 +37,90 @@ const config = field.config ? JSON.parse(field.config) : {};
         </span>
     </label>
 )}
+<!-- EXPLICACIÓN del Markdown:
+  Problema: El valor de {value} genera saltos de línea si se coloca en líneas separadas
+  Solución: Mantener {value} pegado a las etiquetas sin espacios
+  
+  Antes (incorrecto):
+  <textarea>
+    {value || ''}
+  </textarea>
+  
+  Después (correcto):
+  <textarea>{value || ''}</textarea>
+  
+  También añadido:
+  - leading-normal: line-height estándar (evita espacio extra)
+  - resize-y: permite redimensionar verticalmente
+-->
 {field.type === 'markdown' && (
-    <textarea 
-    class="editable-field w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-sm"
+  <textarea 
+    class="editable-field w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-sm leading-normal resize-y"
     data-field={field.name}
     data-type="markdown"
     rows="6"
     placeholder={isEmpty ? '⚠️ Campo vacío - Click para editar' : 'Soporta Markdown'}
-    >
-        {value || ''}
-    </textarea>
+  >{value || ''}</textarea>
 )}
 {field.type === 'enum' && (
-    <select class="editable-field w-full px-3 py-2 border border-gray-300 rounded-lg" data-field={field.name} data-type="enum"> 
-        <option value="">
-            Selecciona...
-        </option> 
-        {JSON.parse(field.config || '{}').options?.map((opt: string) => ( <option value={opt} selected={opt === value}>{opt}</option> ))} 
-    </select>
+  <select 
+    class="editable-field w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+    data-field={field.name} 
+    data-type="enum"
+  > 
+    <option value="">Selecciona...</option> 
+    {JSON.parse(field.config || '{}').options?.map((opt: string) => ( 
+      <option value={opt} selected={opt === value}>{opt}</option> 
+    ))} 
+  </select>
 )}
-{field.type === 'list' && (
-    <div>
-        <div class="flex flex-wrap gap-2 mb-2">
-            {value.map((item: any) => (
-            <span class="px-2 py-1 bg-gray-100 text-gray-700 text-sm rounded flex items-center gap-1">
-                {item}
-                <button
-                class="remove-list-item text-red-600 hover:text-red-800"
-                data-field={field.name}
-                data-item={item}
-                >
-                ×
-                </button>
-            </span>
-            ))}
-        </div>
 
-        <div class="flex gap-2">
-            <input
-            type="text"
-            class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm"
-            placeholder="Añadir elemento..."
-            data-list-input={field.name}
-            />
+{field.type === 'list' && (
+  <div>
+    {/* Lista actual */}
+    {value && value.length > 0 ? (
+      <div class="flex flex-wrap gap-2 mb-3">
+        {value.map((item: any) => (
+          <span class="inline-flex items-center gap-1 px-2.5 py-1 bg-gray-100 text-gray-700 text-sm rounded-md transition-opacity">
+            {item}
             <button
-            class="add-list-item px-3 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm"
-            data-field={field.name}
-            >
-            +
-            </button>
-        </div>
+              class="remove-list-item text-red-600 hover:text-red-800 ml-1"
+              data-field={field.name}
+              data-item={item}
+              type="button"
+            >×</button>
+          </span>
+        ))}
+      </div>
+    ) : (
+      <p class="text-sm text-gray-500 italic mb-3">Sin elementos</p>
+    )}
+
+    {/* Input para añadir */}
+    <div class="flex gap-2">
+      <input
+        type="text"
+        class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
+        placeholder="Añadir elemento..."
+        data-list-input={field.name}
+        onKeyPress={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            document.querySelector(`[data-field="${field.name}"].add-list-item`)?.click();
+          }
+        }}
+      />
+      <button
+        class="add-list-item px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-medium transition"
+        data-field={field.name}
+        type="button"
+      >
+        +
+      </button>
     </div>
+  </div>
 )}
+
 {field.type === 'json' && (
     <textarea 
         class="editable-field w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-sm"
@@ -107,3 +131,17 @@ const config = field.config ? JSON.parse(field.config) : {};
         {JSON.stringify(value, null, 2)}
     </textarea>
 )}
+
+<style>
+  /* CSS adicional para controlar whitespace en textareas */
+  textarea.editable-field {
+    white-space: pre-wrap; /* Respeta saltos de línea pero ajusta texto */
+    line-height: 1.5; /* Espaciado normal */
+    min-height: 120px; /* Altura mínima razonable */
+  }
+  
+  /* Eliminar padding extra en vacío */
+  textarea.editable-field:empty {
+    padding-top: 0.5rem;
+  }
+</style>

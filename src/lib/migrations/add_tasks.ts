@@ -45,7 +45,8 @@ export function addTaskSystem() {
     insertField.run(nanoid(), taskCategoryId, 'due_date', 'Fecha Límite', 'text', 0, 0, JSON.stringify({}), 9, 'Fecha límite (YYYY-MM-DD)');
     insertField.run(nanoid(), taskCategoryId, 'tags', 'Etiquetas', 'list', 0, 0, JSON.stringify({ item_type: 'text' }), 10, 'Etiquetas de la tarea');
     insertField.run(nanoid(), taskCategoryId, 'order_index', 'Orden', 'number', 0, 0, JSON.stringify({ default: 0 }), 11, 'Orden de visualización');
-  }
+    insertField.run(nanoid(), taskCategoryId,  'assigned_to', 'Asignado a', 'text', 0, 0, JSON.stringify({ placeholder: 'Nombre o email' }), 12, 'Usuario responsable de la tarea');
+    insertField.run(nanoid(), taskCategoryId, 'comments', 'Comentarios', 'list', 0, 0, JSON.stringify({item_type: 'json', schema: { user: 'string', text: 'string', timestamp: 'string' }}), 13, 'Historial de comentarios');}
 
   // ========================================
   // TABLA: TASK COMPLETION (por entrada)

@@ -194,7 +194,6 @@ const progress = totalFields > 0 ? Math.round((completedFields / totalFields) * 
                   )}
                   
                   <div class="ml-7 mt-2">
-                    
                     <FieldRenderer field={field} value={entryData[field.name]}/>
                   </div>
                 </div>
@@ -239,6 +238,7 @@ const progress = totalFields > 0 ? Math.round((completedFields / totalFields) * 
     const entryId = document.body.dataset.entryId!;
     let hasChanges = false;
     let currentData: any = {};
+    let pendingSaves = new Set();
 
     // Cargar datos actuales
     async function loadCurrentData() {
@@ -268,93 +268,140 @@ const progress = totalFields > 0 ? Math.round((completedFields / totalFields) * 
 
     // Listas dinámicas
     document.querySelectorAll('.add-list-item').forEach(btn => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', async () => {
         const fieldName = (btn as HTMLElement).dataset.field!;
         const input = document.querySelector(`[data-list-input="${fieldName}"]`) as HTMLInputElement;
         
-        if (input && input.value.trim()) {
-          if (!currentData[fieldName]) currentData[fieldName] = [];
-          currentData[fieldName].push(input.value.trim());
-          input.value = '';
-          hasChanges = true;
-          document.getElementById('saveBtn')?.classList.remove('hidden');
-          
-          // TODO: Recargar vista de lista
-          window.location.reload();
+        if (!input || !input.value.trim()) return;
+        
+        const newValue = input.value.trim();
+        
+        // Actualizar UI inmediatamente (optimista)
+        if (!currentData[fieldName]) currentData[fieldName] = [];
+        currentData[fieldName].push(newValue);
+        
+        // Añadir elemento visual
+        const container = input.closest('.space-y-2, div')?.querySelector('.flex.flex-wrap');
+        if (container) {
+          const tag = createTagElement(fieldName, newValue);
+          container.appendChild(tag);
         }
+        
+        input.value = '';
+        
+        // Guardar en background
+        saveOptimistic(fieldName);
       });
     });
 
-    document.querySelectorAll('.remove-list-item').forEach(btn => {
-      btn.addEventListener('click', () => {
+    document.addEventListener('click', async (e) => {
+      const target = e.target as HTMLElement;
+      
+      if (target.classList.contains('remove-list-item') || target.closest('.remove-list-item')) {
+        const btn = target.classList.contains('remove-list-item') ? target : target.closest('.remove-list-item')!;
         const fieldName = (btn as HTMLElement).dataset.field!;
         const item = (btn as HTMLElement).dataset.item!;
         
+        // Actualizar estado inmediatamente
         if (currentData[fieldName]) {
           currentData[fieldName] = currentData[fieldName].filter((i: string) => i !== item);
-          hasChanges = true;
-          document.getElementById('saveBtn')?.classList.remove('hidden');
-          window.location.reload();
         }
-      });
-    });
-
-    // Guardar cambios
-    document.getElementById('saveBtn')?.addEventListener('click', async () => {
-      const updatedData: any = { ...currentData };
-      
-      // Recopilar valores de campos editables
-      document.querySelectorAll('.editable-field').forEach(field => {
-        const fieldName = (field as HTMLElement).dataset.field;
-        const fieldType = (field as HTMLElement).dataset.type;
         
-        if (!fieldName) return;
-        
-        if (fieldType === 'boolean') {
-          updatedData[fieldName] = (field as HTMLInputElement).checked;
-        } else if (fieldType === 'number') {
-          const val = (field as HTMLInputElement).value;
-          updatedData[fieldName] = val ? parseFloat(val) : null;
-        } else if (fieldType === 'json') {
-          try {
-            updatedData[fieldName] = JSON.parse((field as HTMLTextAreaElement).value || '{}');
-          } catch {
-            alert(`Error en JSON del campo ${fieldName}`);
-            return;
-          }
-        } else if (field.tagName === 'INPUT') {
-          updatedData[fieldName] = (field as HTMLInputElement).value;
-        } else if (field.tagName === 'TEXTAREA') {
-          updatedData[fieldName] = (field as HTMLTextAreaElement).value;
-        } else if (field.tagName === 'SELECT') {
-          updatedData[fieldName] = (field as HTMLSelectElement).value;
-        } else if (field.getAttribute('contenteditable')) {
-          updatedData[fieldName] = field.textContent?.trim() || '';
+        // Eliminar elemento visual
+        const tagElement = btn.closest('span, div');
+        if (tagElement) {
+          tagElement.style.opacity = '0';
+          tagElement.style.transition = 'opacity 0.2s';
+          setTimeout(() => tagElement.remove(), 200);
         }
-      });
-      
-      try {
-        const response = await fetch('/api/entries', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            id: entryId,
-            data: updatedData
-          })
-        });
         
-        if (response.ok) {
-          hasChanges = false;
-          document.getElementById('saveBtn')?.classList.add('hidden');
-          alert('✅ Cambios guardados');
-          window.location.reload();
-        } else {
-          alert('Error al guardar');
-        }
-      } catch (error) {
-        alert('Error de red');
+        // Guardar en background
+        saveOptimistic(fieldName);
       }
     });
+
+    function createTagElement(fieldName: string, value: string): HTMLElement {
+  const span = document.createElement('span');
+  span.className = 'inline-flex items-center gap-1 px-2.5 py-1 bg-gray-100 text-gray-700 text-sm rounded-md transition-opacity';
+  span.innerHTML = `
+    ${value}
+    <button 
+      class="remove-list-item text-red-600 hover:text-red-800 ml-1"
+      data-field="${fieldName}"
+      data-item="${value}"
+      type="button"
+    >×</button>
+  `;
+  return span;
+}
+
+// Guardado optimista con debounce
+let saveTimeout: number | null = null;
+
+async function saveOptimistic(fieldName?: string) {
+  // Cancelar guardado anterior pendiente
+  if (saveTimeout) clearTimeout(saveTimeout);
+  
+  // Mostrar indicador visual
+  showSaveIndicator('Guardando...');
+  
+  // Esperar 500ms para agrupar múltiples cambios
+  saveTimeout = window.setTimeout(async () => {
+    try {
+      const response = await fetch('/api/entries', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: entryId,
+          data: currentData
+        })
+      });
+      
+      if (response.ok) {
+        showSaveIndicator('✓ Guardado', 'success');
+      } else {
+        throw new Error('Save failed');
+      }
+    } catch (error) {
+      console.error('Error saving:', error);
+      showSaveIndicator('Error al guardar', 'error');
+      // Opcionalmente: revertir cambios en UI
+    }
+  }, 500);
+}
+
+// Indicador de guardado (toast discreto)
+let saveIndicatorTimeout: number | null = null;
+
+function showSaveIndicator(message: string, type: 'loading' | 'success' | 'error' = 'loading') {
+  let indicator = document.getElementById('saveIndicator');
+  
+  if (!indicator) {
+    indicator = document.createElement('div');
+    indicator.id = 'saveIndicator';
+    indicator.className = 'fixed bottom-4 right-4 px-4 py-2 rounded-lg shadow-lg z-50 text-sm font-medium transition-all';
+    document.body.appendChild(indicator);
+  }
+  
+  // Estilos según tipo
+  const styles = {
+    loading: 'bg-blue-600 text-white',
+    success: 'bg-green-600 text-white',
+    error: 'bg-red-600 text-white'
+  };
+  
+  indicator.className = `fixed bottom-4 right-4 px-4 py-2 rounded-lg shadow-lg z-50 text-sm font-medium transition-all ${styles[type]}`;
+  indicator.textContent = message;
+  indicator.style.opacity = '1';
+  
+  // Auto-ocultar después de 2s (solo para success/error)
+  if (type !== 'loading') {
+    if (saveIndicatorTimeout) clearTimeout(saveIndicatorTimeout);
+    saveIndicatorTimeout = window.setTimeout(() => {
+      indicator!.style.opacity = '0';
+    }, 2000);
+  }
+}
 
     // Upload imagen
     document.getElementById('imageUpload')?.addEventListener('change', async (e) => {

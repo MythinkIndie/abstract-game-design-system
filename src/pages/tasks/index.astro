@@ -169,159 +169,139 @@ if (taskCategory) {
             </div>
           ) : (
             <div class="divide-y divide-gray-200">
-              {tasks.map((task: any) => (
-                <div 
-                  class={`task-row py-4 px-6 hover:bg-gray-50 transition border-b border-gray-100 ${
-                    task.level === 0 ? 'bg-white' : 'bg-gray-50 ml-8'
-                  } ${task.data.is_completed ? 'opacity-60' : ''}`}
-                  data-task-id={task.id}
-                  data-category-id={task.data.related_category_id || ''}
-                  data-completed={task.data.is_completed ? 'true' : 'false'}
-                  data-title={task.data.title.toLowerCase()}
-                >
-                  <div class="flex items-start gap-4">
-                    <!-- Checkbox de completado -->
-                    <div class="flex-shrink-0 pt-1">
-                      <input 
-                        type="checkbox" 
-                        class="task-checkbox w-5 h-5 text-indigo-600 rounded"
-                        data-task-id={task.id}
-                        checked={task.data.is_completed}
-                      />
-                    </div>
+  {tasks.map((task: any) => (
+    <div 
+      class={`task-row group py-5 px-6 hover:bg-gray-50 transition border-l-4 ${
+        task.level === 0 
+          ? 'border-indigo-500 bg-white' 
+          : 'border-gray-300 bg-gray-50 ml-8'
+      } ${task.data.is_completed ? 'opacity-60' : ''}`}
+      data-task-id={task.id}
+      data-category-id={task.data.related_category_id || ''}
+      data-completed={task.data.is_completed ? 'true' : 'false'}
+      data-title={task.data.title.toLowerCase()}
+    >
+      <div class="flex items-start gap-4">
+        <!-- Checkbox más prominente -->
+        <div class="flex-shrink-0 pt-1.5">
+          <input 
+            type="checkbox" 
+            class="task-checkbox w-6 h-6 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
+            data-task-id={task.id}
+            checked={task.data.is_completed}
+          />
+        </div>
 
-                    <!-- Contenido de la tarea -->
-                    <div class="flex-1 min-w-0">
-                      <div class="flex items-start justify-between gap-4">
-                        <div class="flex-1">
-                          <a 
-                            href={`/tasks/${task.id}`}
-                            class={`font-semibold hover:text-indigo-600 transition ${
-                              task.data.is_completed ? 'line-through text-gray-500' : 
-                              task.level === 0 ? 'text-gray-900 text-lg' : 'text-gray-700'
-                            }`}
-                          >
-                            {task.level > 0 && <span class="text-gray-400 mr-2">└─</span>}
-                            {task.data.title}
-                          </a>
-                          {task.data.description && (
-                            <p class="text-sm text-gray-600 mt-1 line-clamp-2">
-                              {task.data.description.replace(/#/g, '').substring(0, 150)}
-                            </p>
-                          )}
-                          
-                          {/* Mostrar categoría y tipo de aplicación */}
-                          {task.data.related_category_id && (
-                            <div class="flex items-center gap-2 mt-2 text-xs text-gray-500">
-                              <span class="flex items-center gap-1">
-                                📁 {(() => {
-                                  const cat = categories.find((c: any) => c.id === task.data.related_category_id);
-                                  return cat ? cat.name : 'Categoría';
-                                })()}
-                              </span>
-                              {task.data.applies_to_all && (
-                                <span class="px-2 py-0.5 bg-purple-100 text-purple-700 rounded font-medium">
-                                  ✨ Todas las entradas
-                                </span>
-                              )}
-                              {task.data.specific_entry_ids && task.data.specific_entry_ids.length > 0 && (
-                                <span class="px-2 py-0.5 bg-blue-100 text-blue-700 rounded font-medium">
-                                  🎯 {task.data.specific_entry_ids.length} específica(s)
-                                </span>
-                              )}
-                            </div>
-                          )}
-                        </div>
+        <!-- Contenido principal -->
+        <div class="flex-1 min-w-0">
+          <!-- Título como link directo (sin botón editar separado) -->
+          <a 
+            href={`/tasks/${task.id}`}
+            class={`block font-semibold hover:text-indigo-600 transition-colors ${
+              task.data.is_completed ? 'line-through text-gray-500' : 
+              task.level === 0 ? 'text-gray-900 text-lg' : 'text-gray-700'
+            }`}
+          >
+            {task.level > 0 && <span class="text-indigo-400 mr-2">└─</span>}
+            {task.data.title}
+          </a>
 
-                        <!-- Prioridad -->
-                        <span class={`px-2 py-1 rounded text-xs font-medium whitespace-nowrap ${
-                          task.data.priority === 'critical' ? 'bg-red-100 text-red-700' :
-                          task.data.priority === 'high' ? 'bg-orange-100 text-orange-700' :
-                          task.data.priority === 'medium' ? 'bg-blue-100 text-blue-700' :
-                          'bg-gray-100 text-gray-600'
-                        }`}>
-                          {task.data.priority === 'critical' ? '🔥 Crítica' :
-                           task.data.priority === 'high' ? '⬆️ Alta' :
-                           task.data.priority === 'medium' ? '➡️ Media' :
-                           '⬇️ Baja'}
-                        </span>
-                      </div>
-
-                      <!-- Metadata -->
-                      <div class="flex flex-wrap items-center gap-3 mt-3 text-xs text-gray-500">
-                        {task.data.related_category_id && (
-                          <span class="flex items-center gap-1">
-                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-                            </svg>
-                            {(() => {
-                              const cat = categories.find((c: any) => c.id === task.data.related_category_id);
-                              return cat ? cat.name : 'Categoría';
-                            })()}
-                          </span>
-                        )}
-                        
-                        {task.data.applies_to_all && (
-                          <span class="px-2 py-0.5 bg-purple-100 text-purple-700 rounded">
-                            ✨ Aplica a todas
-                          </span>
-                        )}
-                        
-                        {task.data.specific_entry_ids && task.data.specific_entry_ids.length > 0 && (
-                          <span class="px-2 py-0.5 bg-blue-100 text-blue-700 rounded">
-                            🎯 {task.data.specific_entry_ids.length} específicas
-                          </span>
-                        )}
-
-                        {task.data.due_date && (
-                          <span class="flex items-center gap-1">
-                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                            </svg>
-                            {new Date(task.data.due_date).toLocaleDateString('es-ES')}
-                          </span>
-                        )}
-
-                        {task.data.tags && task.data.tags.length > 0 && (
-                          <div class="flex gap-1">
-                            {task.data.tags.map((tag: string) => (
-                              <span class="px-2 py-0.5 bg-gray-100 text-gray-600 rounded">
-                                #{tag}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-
-                      <!-- Acciones -->
-                      <div class="flex gap-2 mt-3">
-                        {task.level === 0 && (
-                          <button 
-                            class="add-subtask text-xs px-3 py-1 bg-gray-100 text-gray-600 rounded hover:bg-gray-200 transition"
-                            data-parent-id={task.id}
-                            data-category-id={task.data.related_category_id}
-                          >
-                            + Subtarea
-                          </button>
-                        )}
-                        <a 
-                          href={`/tasks/edit/${task.id}`}
-                          class="text-xs px-3 py-1 bg-gray-100 text-gray-600 rounded hover:bg-gray-200 transition"
-                        >
-                          Editar
-                        </a>
-                        <button 
-                          class="delete-task text-xs px-3 py-1 bg-red-50 text-red-600 rounded hover:bg-red-100 transition"
-                          data-task-id={task.id}
-                        >
-                          Eliminar
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))}
+          <!-- Descripción (si existe) -->
+          {task.data.description && (
+            <p class="text-sm text-gray-600 mt-2 line-clamp-2 leading-relaxed">
+              {task.data.description.replace(/#/g, '').substring(0, 150)}
+            </p>
+          )}
+          
+          <!-- Metadata: categoría y tipo -->
+          {task.data.related_category_id && (
+            <div class="flex flex-wrap items-center gap-3 mt-3">
+              <span class="inline-flex items-center gap-1.5 px-2.5 py-1 bg-purple-100 text-purple-700 rounded-md text-xs font-medium">
+                📁 {(() => {
+                  const cat = categories.find((c: any) => c.id === task.data.related_category_id);
+                  return cat ? cat.name : 'Categoría';
+                })()}
+              </span>
+              
+              {task.data.applies_to_all && (
+                <span class="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-100 text-indigo-700 rounded-md text-xs font-medium">
+                  ✨ Todas las entradas
+                </span>
+              )}
+              
+              {task.data.specific_entry_ids && task.data.specific_entry_ids.length > 0 && (
+                <span class="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-100 text-blue-700 rounded-md text-xs font-medium">
+                  🎯 {task.data.specific_entry_ids.length} específica(s)
+                </span>
+              )}
             </div>
+          )}
+
+          <!-- Footer: prioridad, fecha, etiquetas -->
+          <div class="flex flex-wrap items-center gap-3 mt-3">
+            <!-- Prioridad -->
+            <span class={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium ${
+              task.data.priority === 'critical' ? 'bg-red-100 text-red-700' :
+              task.data.priority === 'high' ? 'bg-orange-100 text-orange-700' :
+              task.data.priority === 'medium' ? 'bg-blue-100 text-blue-700' :
+              'bg-gray-100 text-gray-600'
+            }`}>
+              {task.data.priority === 'critical' ? '🔥 Crítica' :
+               task.data.priority === 'high' ? '⬆️ Alta' :
+               task.data.priority === 'medium' ? '➡️ Media' :
+               '⬇️ Baja'}
+            </span>
+
+            {/* Fecha límite */}
+            {task.data.due_date && (
+              <span class="inline-flex items-center gap-1.5 text-xs text-gray-500">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                {new Date(task.data.due_date).toLocaleDateString('es-ES')}
+              </span>
+            )}
+
+            {/* Etiquetas */}
+            {task.data.tags && task.data.tags.length > 0 && (
+              <div class="flex gap-1.5">
+                {task.data.tags.slice(0, 3).map((tag: string) => (
+                  <span class="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs">
+                    #{tag}
+                  </span>
+                ))}
+                {task.data.tags.length > 3 && (
+                  <span class="px-2 py-0.5 bg-gray-100 text-gray-500 rounded text-xs">
+                    +{task.data.tags.length - 3}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+
+          <!-- Acciones: solo aparecen al hover -->
+          <div class="flex gap-2 mt-4 opacity-0 group-hover:opacity-100 transition-opacity">
+            {task.level === 0 && (
+              <button 
+                class="add-subtask text-xs px-3 py-1.5 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition"
+                data-parent-id={task.id}
+                data-category-id={task.data.related_category_id}
+              >
+                + Subtarea
+              </button>
+            )}
+            <button 
+              class="delete-task text-xs px-3 py-1.5 bg-red-50 text-red-600 rounded-md hover:bg-red-100 transition"
+              data-task-id={task.id}
+            >
+              Eliminar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  ))}
+</div>
           )}
         </div>
       </div>
@@ -419,5 +399,29 @@ if (taskCategory) {
     searchInput?.addEventListener('input', applyFilters);
     hideCompleted?.addEventListener('change', applyFilters);
   </script>
+  <style>
+    /* Margen izquierdo corregido */
+    .task-row {
+      margin-left: 0;
+    }
+    
+    /* Indentación para subtareas */
+    .task-row.ml-8 {
+      margin-left: 2rem;
+    }
+    
+    /* Mejorar densidad visual */
+    .task-row {
+      line-height: 1.5;
+    }
+    
+    /* Limitar descripción a 2 líneas */
+    .line-clamp-2 {
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+  </style>
 </body>
 </html>

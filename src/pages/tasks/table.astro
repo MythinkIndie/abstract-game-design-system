@@ -186,7 +186,7 @@ if (taskCategory) {
               
               return (
               <tr 
-                class={`task-row hover:bg-gray-50 transition ${isParent ? 'bg-white font-medium' : 'bg-gray-50'}`}
+                class="task-row hover:bg-gray-50 transition"
                 data-task-id={task.id}
                 data-parent-id={task.data.parent_task_id || ''}
                 data-priority={task.data.priority}
@@ -220,13 +220,17 @@ if (taskCategory) {
                     </a>
                   </div>
                   {categoryName !== '-' && (
-                    <div class="text-xs text-gray-500 ml-6 mt-1">
-                      📁 {categoryName}
-                      {task.data.applies_to_all && <span class="ml-2 text-purple-600">• Todas las entradas</span>}
-                      {task.data.specific_entry_ids?.length > 0 && (
-                        <span class="ml-2 text-blue-600">• {task.data.specific_entry_ids.length} específica(s)</span>
-                      )}
-                    </div>
+                    <td class="px-6 py-4">
+                      {(() => {
+                        if (!task.data.related_category_id) return <span class="text-gray-400 text-sm">-</span>;
+                        const cat = categories.find((c: any) => c.id === task.data.related_category_id);
+                        return cat ? (
+                          <span class="category-badge">
+                            📁 {(cat as any).name}
+                          </span>
+                        ) : <span class="text-gray-400 text-sm">-</span>;
+                      })()}
+                    </td>
                   )}
                 </td>
                 <td class="px-6 py-4">
@@ -291,338 +295,292 @@ if (taskCategory) {
     </div>
   </main>
 
+  <style>
+  /* Mejora visual: diferenciación clara */
+  .task-row {
+    transition: all 0.15s ease;
+  }
+  
+  .task-row:hover {
+    background-color: #f9fafb;
+  }
+  
+  /* Tareas principales: más destacadas */
+  .task-row:not([data-parent-id]) {
+    font-weight: 500;
+    border-left: 3px solid #6366f1; /* Barra indigo */
+  }
+  
+  /* Subtareas: indentadas y con fondo diferente */
+  .subtask-row {
+    background-color: #f9fafb;
+    border-left: 3px solid #cbd5e1; /* Barra gris */
+  }
+  
+  .subtask-row:hover {
+    background-color: #f1f5f9;
+  }
+  
+  /* Icono de expansión suave */
+  .expand-icon {
+    transition: transform 0.2s ease;
+  }
+  
+  .expand-icon.rotate-90 {
+    transform: rotate(90deg);
+  }
+  
+  /* Iconos de ordenamiento */
+  .sort-icon {
+    transition: all 0.2s ease;
+    opacity: 0.3;
+  }
+  
+  th[data-sort] {
+    user-select: none;
+    cursor: pointer;
+  }
+  
+  th[data-sort]:hover .sort-icon {
+    opacity: 0.6;
+  }
+  
+  /* Badges de categoría más visibles */
+  .category-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.25rem 0.5rem;
+    background-color: #ede9fe;
+    color: #6d28d9;
+    border-radius: 0.375rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+  }
+  
+  /* Completadas: menos prominentes */
+  .task-row[data-completed="true"] {
+    opacity: 0.6;
+  }
+  
+  .task-row[data-completed="true"] a {
+    text-decoration: line-through;
+  }
+</style>
+
   <script>
     let allTasks: any[] = [];
-    let filteredTasks: any[] = [];
+let filteredTasks: any[] = [];
+let currentSort = { field: null as string | null, direction: null as 'asc' | 'desc' | null };
+
+document.addEventListener('DOMContentLoaded', () => {
+  const rows = document.querySelectorAll('.task-row');
+  allTasks = Array.from(rows).map(row => ({
+    element: row,
+    id: (row as HTMLElement).dataset.taskId,
+    parentId: (row as HTMLElement).dataset.parentId,
+    priority: (row as HTMLElement).dataset.priority,
+    categoryId: (row as HTMLElement).dataset.categoryId,
+    completed: (row as HTMLElement).dataset.completed === 'true',
+    title: (row as HTMLElement).dataset.title,
+    dueDate: (row as HTMLElement).dataset.dueDate
+  }));
+  filteredTasks = [...allTasks];
+});
+
+// ORDENAMIENTO CORREGIDO
+function sortTasks() {
+  if (!currentSort.direction || !currentSort.field) {
+    // Sin orden: restaurar orden original del DOM
+    const tbody = document.getElementById('taskTableBody')!;
+    allTasks.forEach(task => tbody.appendChild(task.element));
+    return;
+  }
+
+  const tbody = document.getElementById('taskTableBody')!;
+  
+  // Ordenar solo tareas principales (sin parentId)
+  const mainTasks = filteredTasks.filter(t => !t.parentId);
+  
+  mainTasks.sort((a, b) => {
+    let aVal: any, bVal: any;
     
-    // Cargar todas las tareas en memoria
-    document.addEventListener('DOMContentLoaded', () => {
-      const rows = document.querySelectorAll('.task-row');
-      allTasks = Array.from(rows).map(row => ({
-        element: row,
-        id: (row as HTMLElement).dataset.taskId,
-        parentId: (row as HTMLElement).dataset.parentId,
-        priority: (row as HTMLElement).dataset.priority,
-        categoryId: (row as HTMLElement).dataset.categoryId,
-        completed: (row as HTMLElement).dataset.completed === 'true',
-        title: (row as HTMLElement).dataset.title,
-        dueDate: (row as HTMLElement).dataset.dueDate
-      }));
-      filteredTasks = [...allTasks];
-    });
-
-    // Filtros
-    const searchText = document.getElementById('searchText') as HTMLInputElement;
-    const filterPriority = document.getElementById('filterPriority') as HTMLSelectElement;
-    const filterCategory = document.getElementById('filterCategory') as HTMLSelectElement;
-    const filterStatus = document.getElementById('filterStatus') as HTMLSelectElement;
-
-    function applyFilters() {
-      const search = searchText?.value.toLowerCase() || '';
-      const priority = filterPriority?.value || '';
-      const category = filterCategory?.value || '';
-      const status = filterStatus?.value || '';
-
-      filteredTasks = allTasks.filter(task => {
-        const matchesSearch = !search || task.title.includes(search);
-        const matchesPriority = !priority || task.priority === priority;
-        const matchesCategory = !category || task.categoryId === category;
-        const matchesStatus = !status || 
-          (status === 'completed' && task.completed) ||
-          (status === 'pending' && !task.completed);
-
-        return matchesSearch && matchesPriority && matchesCategory && matchesStatus;
-      });
-
-      updateTable();
+    if (currentSort.field === 'title') {
+      aVal = a.title;
+      bVal = b.title;
+    } else if (currentSort.field === 'priority') {
+      const priorityOrder = { low: 1, medium: 2, high: 3, critical: 4 };
+      aVal = priorityOrder[a.priority as keyof typeof priorityOrder] || 0;
+      bVal = priorityOrder[b.priority as keyof typeof priorityOrder] || 0;
+    } else if (currentSort.field === 'due_date') {
+      aVal = a.dueDate || '9999-12-31';
+      bVal = b.dueDate || '9999-12-31';
     }
-
-    function updateTable() {
-      allTasks.forEach(task => {
-        (task.element as HTMLElement).style.display = 
-          filteredTasks.includes(task) ? '' : 'none';
-      });
-
-      document.getElementById('visibleCount')!.textContent = String(filteredTasks.length);
-    }
-
-    searchText?.addEventListener('input', applyFilters);
-    filterPriority?.addEventListener('change', applyFilters);
-    filterCategory?.addEventListener('change', applyFilters);
-    filterStatus?.addEventListener('change', applyFilters);
-
-    document.getElementById('clearFilters')?.addEventListener('click', () => {
-      if (searchText) searchText.value = '';
-      if (filterPriority) filterPriority.value = '';
-      if (filterCategory) filterCategory.value = '';
-      if (filterStatus) filterStatus.value = '';
-      applyFilters();
-    });
-
-    // Ordenamiento
-    let currentSort = { field: null, direction: null }; // null, 'asc', 'desc'
     
-    document.querySelectorAll('[data-sort]').forEach(header => {
-      header.addEventListener('click', () => {
-        const sortBy = (header as HTMLElement).dataset.sort!;
-        const icon = header.querySelector('.sort-icon');
-        
-        // Ciclar: null → asc → desc → null
-        if (currentSort.field === sortBy) {
-          if (currentSort.direction === null) {
-            currentSort.direction = 'asc';
-          } else if (currentSort.direction === 'asc') {
-            currentSort.direction = 'desc';
-          } else {
-            currentSort.direction = null;
-            currentSort.field = null;
-          }
-        } else {
-          currentSort.field = sortBy;
-          currentSort.direction = 'asc';
+    const comparison = aVal > bVal ? 1 : aVal < bVal ? -1 : 0;
+    return currentSort.direction === 'asc' ? comparison : -comparison;
+  });
+  
+  // Reordenar DOM manteniendo subtareas debajo de sus padres
+  mainTasks.forEach(mainTask => {
+    tbody.appendChild(mainTask.element);
+    
+    // Insertar subtareas inmediatamente después
+    const subtasks = allTasks.filter(t => t.parentId === mainTask.id);
+    subtasks.forEach(sub => tbody.appendChild(sub.element));
+  });
+}
+
+// HEADERS CON ORDENAMIENTO CÍCLICO
+document.querySelectorAll('[data-sort]').forEach(header => {
+  header.addEventListener('click', () => {
+    const sortBy = (header as HTMLElement).dataset.sort!;
+    const icon = header.querySelector('.sort-icon');
+    
+    // Resetear otros headers
+    document.querySelectorAll('[data-sort]').forEach(h => {
+      if (h !== header) {
+        const otherIcon = h.querySelector('.sort-icon');
+        if (otherIcon) {
+          (otherIcon as HTMLElement).style.opacity = '0.3';
+          (otherIcon as HTMLElement).style.transform = 'none';
         }
-        
-        // Actualizar iconos
-        document.querySelectorAll('.sort-icon').forEach(i => {
-          (i as HTMLElement).style.opacity = '0.3';
-          (i as HTMLElement).style.transform = 'none';
-        });
-        
-        if (currentSort.direction) {
-          (icon as HTMLElement).style.opacity = '1';
-          if (currentSort.direction === 'desc') {
-            (icon as HTMLElement).style.transform = 'rotate(180deg)';
-          }
-        }
-        
-        sortTasks();
-      });
+      }
     });
     
-    function sortTasks() {
-      if (!currentSort.direction) {
-        // Restaurar orden original
-        filteredTasks = [...allTasks];
-        updateTable();
-        return;
+    // Ciclar: null → asc → desc → null
+    if (currentSort.field === sortBy) {
+      if (currentSort.direction === null) {
+        currentSort.direction = 'asc';
+      } else if (currentSort.direction === 'asc') {
+        currentSort.direction = 'desc';
+      } else {
+        currentSort.direction = null;
+        currentSort.field = null;
       }
-      
-      filteredTasks.sort((a, b) => {
-        let aVal, bVal;
-        
-        if (currentSort.field === 'title') {
-          aVal = a.title;
-          bVal = b.title;
-        } else if (currentSort.field === 'priority') {
-          const priorityOrder = { low: 1, medium: 2, high: 3, critical: 4 };
-          aVal = priorityOrder[a.priority as keyof typeof priorityOrder] || 0;
-          bVal = priorityOrder[b.priority as keyof typeof priorityOrder] || 0;
-        } else if (currentSort.field === 'due_date') {
-          aVal = a.dueDate || '9999-12-31';
-          bVal = b.dueDate || '9999-12-31';
-        }
-        
-        if (currentSort.direction === 'asc') {
-          return aVal > bVal ? 1 : -1;
-        } else {
-          return aVal < bVal ? 1 : -1;
-        }
-      });
-      
-      updateTable();
+    } else {
+      currentSort.field = sortBy;
+      currentSort.direction = 'asc';
     }
-
-    // Expand/Collapse subtareas
-    document.querySelectorAll('.expand-btn').forEach(btn => {
-      btn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        const taskId = (btn as HTMLElement).dataset.taskId;
-        const icon = btn.querySelector('.expand-icon');
-        const row = (btn as HTMLElement).closest('tr');
-        
-        // Toggle icono
-        const isExpanded = icon?.classList.contains('rotate-90');
-        if (isExpanded) {
-          icon?.classList.remove('rotate-90');
-        } else {
-          icon?.classList.add('rotate-90');
-        }
-        
-        // Buscar subtareas existentes
-        const existingSubtasks = document.querySelectorAll(`[data-parent-id="${taskId}"]`);
-        
-        if (existingSubtasks.length === 0) {
-          // Cargar subtareas por primera vez
-          await loadSubtasks(taskId, row!);
-        } else {
-          // Toggle visibilidad
-          existingSubtasks.forEach(sub => {
-            (sub as HTMLElement).style.display = 
-              (sub as HTMLElement).style.display === 'none' ? '' : 'none';
-          });
-        }
-      });
-    });
-
-    async function loadSubtasks(parentId: string, parentRow: Element) {
-      try {
-        const response = await fetch(`/api/tasks?parent_id=${parentId}`);
-        const subtasks = await response.json();
-        
-        subtasks.forEach((subtask: any, index: number) => {
-          const newRow = document.createElement('tr');
-          newRow.className = 'subtask-row bg-gray-50 border-l-4 border-indigo-200';
-          newRow.dataset.parentId = parentId;
-          newRow.dataset.taskId = subtask.id;
-          
-          const priorityColors = {
-            low: 'bg-gray-100 text-gray-700',
-            medium: 'bg-blue-100 text-blue-700',
-            high: 'bg-orange-100 text-orange-700',
-            critical: 'bg-red-100 text-red-700'
-          };
-          
-          newRow.innerHTML = `
-            <td></td>
-            <td class="px-6 py-4">
-              <input type="checkbox" class="task-select rounded" data-task-id="${subtask.id}" />
-            </td>
-            <td class="px-6 py-4">
-              <div class="flex items-center gap-2 pl-8">
-                <span class="text-gray-400">└─</span>
-                <input type="checkbox" class="task-checkbox w-4 h-4 rounded" data-task-id="${subtask.id}" ${subtask.data.is_completed ? 'checked' : ''} />
-                <a href="/tasks/${subtask.id}" class="text-gray-700 hover:text-indigo-600">${subtask.data.title}</a>
-              </div>
-            </td>
-            <td class="px-6 py-4">
-              <span class="px-2 py-1 rounded text-xs font-medium ${priorityColors[subtask.data.priority as keyof typeof priorityColors] || 'bg-gray-100 text-gray-600'}">
-                ${subtask.data.priority}
-              </span>
-            </td>
-            <td class="px-6 py-4 text-sm text-gray-500">-</td>
-            <td class="px-6 py-4 text-sm text-gray-500">${subtask.data.due_date ? new Date(subtask.data.due_date).toLocaleDateString('es-ES') : '-'}</td>
-            <td class="px-6 py-4">
-              ${subtask.data.tags?.slice(0, 2).map((tag: string) => `
-                <span class="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs">#${tag}</span>
-              `).join('') || ''}
-            </td>
-            <td class="px-6 py-4">
-              <button class="delete-task text-red-600 hover:text-red-800 text-sm" data-task-id="${subtask.id}">Eliminar</button>
-            </td>
-          `;
-          
-          parentRow.after(newRow);
-          
-          // Actualizar allTasks
-          allTasks.push({
-            element: newRow,
-            id: subtask.id,
-            parentId: parentId,
-            priority: subtask.data.priority,
-            categoryId: '',
-            completed: subtask.data.is_completed,
-            title: subtask.data.title.toLowerCase(),
-            dueDate: subtask.data.due_date || ''
-          });
-        });
-      } catch (error) {
-        console.error('Error loading subtasks:', error);
-      }
+    
+    // Actualizar icono visual
+    if (currentSort.direction === null) {
+      (icon as HTMLElement).style.opacity = '0.3';
+      (icon as HTMLElement).style.transform = 'none';
+    } else if (currentSort.direction === 'asc') {
+      (icon as HTMLElement).style.opacity = '1';
+      (icon as HTMLElement).style.transform = 'none';
+    } else {
+      (icon as HTMLElement).style.opacity = '1';
+      (icon as HTMLElement).style.transform = 'rotate(180deg)';
     }
+    
+    sortTasks();
+  });
+});
 
-    // Checkboxes completado
-    document.addEventListener('change', async (e) => {
-      if ((e.target as HTMLElement).classList.contains('task-checkbox')) {
-        const taskId = (e.target as HTMLElement).dataset.taskId;
-        const isCompleted = (e.target as HTMLInputElement).checked;
-        
-        try {
-          await fetch('/api/tasks', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: taskId, is_completed: isCompleted })
-          });
-        } catch (error) {
-          console.error('Error updating task:', error);
-        }
-      }
-    });
-
-    // Selección múltiple
-    const selectAll = document.getElementById('selectAll') as HTMLInputElement;
-    selectAll?.addEventListener('change', () => {
-      document.querySelectorAll('.task-select').forEach(cb => {
-        (cb as HTMLInputElement).checked = selectAll.checked;
+// EXPANSIÓN DE SUBTAREAS (sin conflicto con ordenamiento)
+document.querySelectorAll('.expand-btn').forEach(btn => {
+  btn.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    const taskId = (btn as HTMLElement).dataset.taskId;
+    const icon = btn.querySelector('.expand-icon');
+    const row = (btn as HTMLElement).closest('tr');
+    
+    const isExpanded = icon?.classList.contains('rotate-90');
+    
+    if (isExpanded) {
+      icon?.classList.remove('rotate-90');
+      // Ocultar subtareas
+      document.querySelectorAll(`[data-parent-id="${taskId}"]`).forEach(sub => {
+        (sub as HTMLElement).style.display = 'none';
       });
-      updateBulkButtons();
-    });
-
-    document.addEventListener('change', (e) => {
-      if ((e.target as HTMLElement).classList.contains('task-select')) {
-        updateBulkButtons();
-      }
-    });
-
-    function updateBulkButtons() {
-      const selected = document.querySelectorAll('.task-select:checked').length;
-      const bulkComplete = document.getElementById('bulkComplete') as HTMLButtonElement;
-      const bulkDelete = document.getElementById('bulkDelete') as HTMLButtonElement;
+    } else {
+      icon?.classList.add('rotate-90');
       
-      if (bulkComplete) bulkComplete.disabled = selected === 0;
-      if (bulkDelete) bulkDelete.disabled = selected === 0;
-    }
-
-    // Acciones en lote
-    document.getElementById('bulkComplete')?.addEventListener('click', async () => {
-      const selected = Array.from(document.querySelectorAll('.task-select:checked'))
-        .map(cb => (cb as HTMLElement).dataset.taskId);
+      // Verificar si ya están cargadas
+      const existingSubtasks = document.querySelectorAll(`[data-parent-id="${taskId}"]`);
       
-      for (const taskId of selected) {
-        await fetch('/api/tasks', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: taskId, is_completed: true })
+      if (existingSubtasks.length === 0) {
+        // Cargar por primera vez
+        await loadSubtasks(taskId, row!);
+      } else {
+        // Solo mostrar
+        existingSubtasks.forEach(sub => {
+          (sub as HTMLElement).style.display = '';
         });
       }
-      
-      window.location.reload();
-    });
+    }
+  });
+});
 
-    document.getElementById('bulkDelete')?.addEventListener('click', async () => {
-      if (!confirm('¿Eliminar las tareas seleccionadas?')) return;
+async function loadSubtasks(parentId: string, parentRow: Element) {
+  try {
+    const response = await fetch(`/api/tasks?parent_id=${parentId}`);
+    const subtasks = await response.json();
+    
+    const tbody = document.getElementById('taskTableBody')!;
+    
+    subtasks.forEach((subtask: any) => {
+      const newRow = document.createElement('tr');
+      newRow.className = 'subtask-row';
+      newRow.dataset.parentId = parentId;
+      newRow.dataset.taskId = subtask.id;
       
-      const selected = Array.from(document.querySelectorAll('.task-select:checked'))
-        .map(cb => (cb as HTMLElement).dataset.taskId);
+      const priorityColors = {
+        low: 'bg-gray-100 text-gray-700',
+        medium: 'bg-blue-100 text-blue-700',
+        high: 'bg-orange-100 text-orange-700',
+        critical: 'bg-red-100 text-red-700'
+      };
       
-      for (const taskId of selected) {
-        await fetch('/api/tasks', {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: taskId })
-        });
-      }
+      newRow.innerHTML = `
+        <td></td>
+        <td class="px-6 py-4">
+          <input type="checkbox" class="task-select rounded" data-task-id="${subtask.id}" />
+        </td>
+        <td class="px-6 py-4">
+          <div class="flex items-center gap-2 pl-8">
+            <span class="text-indigo-400">└─</span>
+            <input type="checkbox" class="task-checkbox w-4 h-4 rounded" data-task-id="${subtask.id}" ${subtask.data.is_completed ? 'checked' : ''} />
+            <a href="/tasks/${subtask.id}" class="text-gray-700 hover:text-indigo-600 text-sm">${subtask.data.title}</a>
+          </div>
+        </td>
+        <td class="px-6 py-4">
+          <span class="px-2 py-1 rounded text-xs font-medium ${priorityColors[subtask.data.priority as keyof typeof priorityColors]}">
+            ${subtask.data.priority}
+          </span>
+        </td>
+        <td class="px-6 py-4 text-sm text-gray-500">-</td>
+        <td class="px-6 py-4 text-sm text-gray-500">${subtask.data.due_date ? new Date(subtask.data.due_date).toLocaleDateString('es-ES') : '-'}</td>
+        <td class="px-6 py-4">
+          ${subtask.data.tags?.slice(0, 2).map((tag: string) => `
+            <span class="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs">#${tag}</span>
+          `).join('') || ''}
+        </td>
+        <td class="px-6 py-4">
+          <button class="delete-task text-red-600 hover:text-red-800 text-sm" data-task-id="${subtask.id}">Eliminar</button>
+        </td>
+      `;
       
-      window.location.reload();
+      // Insertar después del padre
+      parentRow.after(newRow);
+      
+      allTasks.push({
+        element: newRow,
+        id: subtask.id,
+        parentId: parentId,
+        priority: subtask.data.priority,
+        categoryId: '',
+        completed: subtask.data.is_completed,
+        title: subtask.data.title.toLowerCase(),
+        dueDate: subtask.data.due_date || ''
+      });
     });
-
-    // Eliminar individual
-    document.addEventListener('click', async (e) => {
-      if ((e.target as HTMLElement).classList.contains('delete-task')) {
-        const taskId = (e.target as HTMLElement).dataset.taskId;
-        if (!confirm('¿Eliminar esta tarea?')) return;
-        
-        try {
-          await fetch('/api/tasks', {
-            method: 'DELETE',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: taskId })
-          });
-          window.location.reload();
-        } catch (error) {
-          alert('Error al eliminar');
-        }
-      }
-    });
+  } catch (error) {
+    console.error('Error loading subtasks:', error);
+  }
+}
   </script>
 </body>
 </html>
