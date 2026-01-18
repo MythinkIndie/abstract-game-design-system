@@ -83,25 +83,54 @@ const progress = totalFields > 0 ? Math.round((completedFields / totalFields) * 
         <div class="flex items-center gap-4 flex-1 min-w-0">
           <!-- Imagen de entrada -->
           <div class="relative group flex-shrink-0">
+            {/* Imagen con manejo de error */}
             <img 
               id="entryImage"
-              src={entryData._image || '/placeholder-image.png'}
+              src={entryData._image || '/placeholder.svg'}
               alt={(entry as any).title}
-              class="w-24 h-24 rounded-lg object-cover border-2 border-gray-200"
-              onerror="this.src='/placeholder-image.png'"
+              class="w-24 h-24 rounded-lg object-cover border-2 border-gray-200 bg-gray-100"
+              onerror="this.style.display='none'; document.getElementById('imagePlaceholder').style.display='flex';"
             />
-            <label class="absolute inset-0 flex items-center justify-center bg-black bg-opacity-0 group-hover:bg-opacity-50 rounded-lg cursor-pointer transition">
-              <svg class="w-6 h-6 text-white opacity-0 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+            
+            {/* Placeholder SVG si no hay imagen */}
+            <div 
+              id="imagePlaceholder"
+              class="w-24 h-24 rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 flex items-center justify-center"
+              style={entryData._image ? 'display: none;' : ''}
+            >
+              <svg class="w-10 h-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
+            </div>
+            
+            {/* Overlay para subir */}
+            <label class="absolute inset-0 flex items-center justify-center bg-black bg-opacity-0 group-hover:bg-opacity-60 rounded-lg cursor-pointer transition-all">
+              <div class="opacity-0 group-hover:opacity-100 transition-opacity text-white text-center">
+                <svg class="w-8 h-8 mx-auto mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                </svg>
+                <span class="text-xs font-medium">Subir imagen</span>
+              </div>
               <input 
                 type="file" 
                 id="imageUpload"
-                accept="image/*"
+                accept="image/jpeg,image/png,image/gif,image/webp"
                 class="hidden"
               />
             </label>
+            
+            {/* Botón para eliminar imagen */}
+            {entryData._image && (
+              <button 
+                id="removeImageBtn"
+                class="absolute -top-2 -right-2 w-6 h-6 bg-red-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-700"
+                title="Eliminar imagen"
+              >
+                <svg class="w-4 h-4 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
           </div>
           
           <div class="flex-1 min-w-0">
@@ -194,7 +223,43 @@ const progress = totalFields > 0 ? Math.round((completedFields / totalFields) * 
                   )}
                   
                   <div class="ml-7 mt-2">
-                    <FieldRenderer field={field} value={entryData[field.name]}/>
+                    {/* {field.type === 'relation' ? (
+                      <div>
+                        {(() => {
+                          const config = JSON.parse(field.config || '{}');
+                          const relatedCategoryId = config.related_category_id;
+                          
+                          if (!value) return <p class="text-sm text-gray-500 italic">Sin relación</p>;
+                          
+                          // Obtener datos de las entradas relacionadas
+                          const relatedIds = Array.isArray(value) ? value : [value];
+                          
+                          return (
+                            <div class="flex flex-wrap gap-2">
+                              {relatedIds.map((id: string) => {
+                                const relatedEntry = db.prepare('SELECT * FROM entries WHERE id = ?').get(id);
+                                if (!relatedEntry) return null;
+                                
+                                const relatedCategory = db.prepare('SELECT * FROM categories WHERE id = ?').get(relatedCategoryId);
+                                
+                                return (
+                                  <a 
+                                    href={`/entries/${relatedCategory.slug}/${id}`}
+                                    class="inline-flex items-center gap-2 px-3 py-2 bg-white border-2 border-indigo-200 rounded-lg hover:border-indigo-400 transition"
+                                  >
+                                    <div class="w-2 h-2 rounded-full" style={`background-color: ${relatedCategory.color}`}></div>
+                                    <span class="font-medium text-gray-900">{relatedEntry.title}</span>
+                                    <span class="text-xs text-gray-500">({relatedCategory.name})</span>
+                                  </a>
+                                );
+                              })}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    ) : ( }*/}
+                      <FieldRenderer field={field} value={entryData[field.name]}/>
+                    {/* )} */}
                   </div>
                 </div>
               );
@@ -486,6 +551,201 @@ function showSaveIndicator(message: string, type: 'loading' | 'success' | 'error
         e.returnValue = '';
       }
     });
+
+    document.addEventListener('DOMContentLoaded', async () => {
+  // Cargar opciones para campos de relación
+  const relationFields = document.querySelectorAll('.relation-select');
+  
+  for (const select of relationFields) {
+    const fieldName = (select as HTMLElement).dataset.field!;
+    const container = document.getElementById(`relation-${fieldName}`);
+    const relatedCategoryId = container?.dataset.category;
+    
+    if (!relatedCategoryId) continue;
+    
+    try {
+      // Obtener entradas de la categoría relacionada
+      const response = await fetch(`/api/entries?category_id=${relatedCategoryId}`);
+      const entries = await response.json();
+      
+      // Llenar select
+      (select as HTMLSelectElement).innerHTML = 
+        '<option value="">Selecciona...</option>' +
+        entries.map((entry: any) => {
+          const isSelected = currentData[fieldName] === entry.id || 
+                           (Array.isArray(currentData[fieldName]) && currentData[fieldName].includes(entry.id));
+          return `<option value="${entry.id}" ${isSelected ? 'selected' : ''}>${entry.title}</option>`;
+        }).join('');
+      
+      // Si es múltiple, manejar selección
+      if ((select as HTMLElement).dataset.multiple === 'true') {
+        select.addEventListener('change', (e) => {
+          const selectedId = (e.target as HTMLSelectElement).value;
+          if (!selectedId) return;
+          
+          if (!currentData[fieldName]) currentData[fieldName] = [];
+          if (!currentData[fieldName].includes(selectedId)) {
+            currentData[fieldName].push(selectedId);
+          }
+          
+          // Añadir badge visual
+          const selectedContainer = document.getElementById(`selected-${fieldName}`);
+          const selectedEntry = entries.find((e: any) => e.id === selectedId);
+          
+          if (selectedContainer && selectedEntry) {
+            const badge = document.createElement('span');
+            badge.className = 'inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-100 text-indigo-700 rounded-md text-sm';
+            badge.innerHTML = `
+              ${selectedEntry.title}
+              <button class="remove-relation text-red-600 hover:text-red-800" data-field="${fieldName}" data-id="${selectedId}">×</button>
+            `;
+            selectedContainer.appendChild(badge);
+          }
+          
+          (e.target as HTMLSelectElement).value = '';
+          hasChanges = true;
+          document.getElementById('saveBtn')?.classList.remove('hidden');
+        });
+      }
+      
+    } catch (error) {
+      console.error('Error loading relation options:', error);
+    }
+  }
+  
+  // Manejar eliminación de relaciones múltiples
+  document.addEventListener('click', (e) => {
+    const target = e.target as HTMLElement;
+    if (target.classList.contains('remove-relation')) {
+      const fieldName = target.dataset.field!;
+      const idToRemove = target.dataset.id!;
+      
+      if (currentData[fieldName]) {
+        currentData[fieldName] = currentData[fieldName].filter((id: string) => id !== idToRemove);
+      }
+      
+      target.closest('span')?.remove();
+      hasChanges = true;
+      document.getElementById('saveBtn')?.classList.remove('hidden');
+    }
+  });
+});
+
+// Upload con indicador de progreso
+document.getElementById('imageUpload')?.addEventListener('change', async (e) => {
+  const file = (e.target as HTMLInputElement).files?.[0];
+  if (!file) return;
+  
+  // Validación del lado del cliente
+  if (!file.type.startsWith('image/')) {
+    alert('Por favor selecciona una imagen válida');
+    return;
+  }
+  
+  if (file.size > 5 * 1024 * 1024) {
+    alert('La imagen es demasiado grande. Máximo 5MB');
+    return;
+  }
+  
+  // Mostrar indicador de carga
+  const placeholder = document.getElementById('imagePlaceholder')!;
+  placeholder.innerHTML = `
+    <div class="text-center">
+      <svg class="animate-spin w-8 h-8 text-indigo-600 mx-auto" fill="none" viewBox="0 0 24 24">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+      </svg>
+      <p class="text-xs text-gray-500 mt-2">Subiendo...</p>
+    </div>
+  `;
+  placeholder.style.display = 'flex';
+  
+  try {
+    const formData = new FormData();
+    formData.append('image', file);
+    
+    const uploadResponse = await fetch('/api/upload-image', {
+      method: 'POST',
+      body: formData
+    });
+    
+    if (!uploadResponse.ok) {
+      const error = await uploadResponse.json();
+      throw new Error(error.error || 'Error al subir imagen');
+    }
+    
+    const { url } = await uploadResponse.json();
+    
+    // Actualizar la entrada con la nueva URL
+    currentData._image = url;
+    
+    const response = await fetch('/api/entries', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: entryId,
+        data: currentData
+      })
+    });
+    
+    if (response.ok) {
+      // Actualizar imagen sin recargar página
+      const img = document.getElementById('entryImage') as HTMLImageElement;
+      img.src = url;
+      img.style.display = 'block';
+      placeholder.style.display = 'none';
+      
+      // Restaurar placeholder original
+      placeholder.innerHTML = `
+        <svg class="w-10 h-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+        </svg>
+      `;
+    } else {
+      throw new Error('Error al guardar');
+    }
+  } catch (error) {
+    console.error('Error:', error);
+    alert(error instanceof Error ? error.message : 'Error al subir imagen');
+    
+    // Restaurar placeholder
+    placeholder.style.display = 'flex';
+    placeholder.innerHTML = `
+      <svg class="w-10 h-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+      </svg>
+    `;
+  }
+});
+
+// Eliminar imagen
+document.getElementById('removeImageBtn')?.addEventListener('click', async (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  
+  if (!confirm('¿Eliminar la imagen?')) return;
+  
+  currentData._image = null;
+  
+  try {
+    await fetch('/api/entries', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: entryId,
+        data: currentData
+      })
+    });
+    
+    // Ocultar imagen, mostrar placeholder
+    const img = document.getElementById('entryImage') as HTMLImageElement;
+    img.style.display = 'none';
+    document.getElementById('imagePlaceholder')!.style.display = 'flex';
+    
+  } catch (error) {
+    alert('Error al eliminar imagen');
+  }
+});
   </script>
 </body>
 </html>

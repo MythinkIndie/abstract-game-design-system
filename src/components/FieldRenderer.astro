@@ -132,6 +132,45 @@ const config = field.config ? JSON.parse(field.config) : {};
     </textarea>
 )}
 
+{field.type === 'relation' && (
+  <div>
+    {(() => {
+      const config = JSON.parse(field.config || '{}');
+      const allowMultiple = config.allow_multiple;
+      
+      // Cargar entradas de la categoría relacionada (esto se hace en el script)
+      return (
+        <div id={`relation-${field.name}`} data-field={field.name} data-category={config.related_category_id}>
+          {allowMultiple ? (
+            // Selector múltiple
+            <div>
+              <div class="flex flex-wrap gap-2 mb-2" id={`selected-${field.name}`}>
+                {/* Se llenará dinámicamente */}
+              </div>
+              <select 
+                class="relation-select w-full px-3 py-2 border border-gray-300 rounded-lg"
+                data-field={field.name}
+                data-multiple="true"
+              >
+                <option value="">Selecciona...</option>
+              </select>
+            </div>
+          ) : (
+            // Selector simple
+            <select 
+              class="relation-select editable-field w-full px-3 py-2 border border-gray-300 rounded-lg"
+              data-field={field.name}
+              data-type="relation"
+            >
+              <option value="">Selecciona...</option>
+            </select>
+          )}
+        </div>
+      );
+    })()}
+  </div>
+)}
+
 <style>
   /* CSS adicional para controlar whitespace en textareas */
   textarea.editable-field {

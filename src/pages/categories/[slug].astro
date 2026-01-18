@@ -12,6 +12,19 @@ if (!category) {
 
 const fields = db.prepare('SELECT * FROM fields WHERE category_id = ? ORDER BY field_order, created_at').all((category as any).id);
 
+const inheritedFields = fields.filter((f: any) => {
+  // Si la categoría hereda de Entity, verificar si el campo existe en Entity
+  if ((category as any).inherits_from) {
+    const parentField = db.prepare(
+      'SELECT id FROM fields WHERE category_id = ? AND name = ?'
+    ).get((category as any).inherits_from, f.name);
+    return !!parentField;
+  }
+  return false;
+});
+
+const customFields = fields.filter((f: any) => !inheritedFields.includes(f));
+
 const entryCount = db.prepare('SELECT COUNT(*) as count FROM entries WHERE category_id = ?').get((category as any).id) as { count: number };
 ---
 
@@ -49,98 +62,102 @@ const entryCount = db.prepare('SELECT COUNT(*) as count FROM entries WHERE categ
   </header>
 
   <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-      <!-- Info de la categoría -->
-      <div class="lg:col-span-1 space-y-6">
-        <div class="bg-white rounded-lg shadow border border-gray-200 p-6">
-          <h2 class="text-lg font-semibold text-gray-900 mb-4">Información</h2>
-          <dl class="space-y-3">
-            <div>
-              <dt class="text-xs font-medium text-gray-500">Slug</dt>
-              <dd class="text-sm text-gray-900 font-mono">{(category as any).slug}</dd>
-            </div>
-            <div>
-              <dt class="text-xs font-medium text-gray-500">Color</dt>
-              <dd class="flex items-center gap-2">
-                <div class="w-6 h-6 rounded border border-gray-300" style={`background-color: ${(category as any).color}`}></div>
-                <span class="text-sm text-gray-900 font-mono">{(category as any).color}</span>
-              </dd>
-            </div>
-            <div>
-              <dt class="text-xs font-medium text-gray-500">Tipo</dt>
-              <dd class="text-sm text-gray-900">
-                {(category as any).is_system ? 'Sistema' : 'Personalizada'}
-              </dd>
-            </div>
-            <div>
-              <dt class="text-xs font-medium text-gray-500">Total de Campos</dt>
-              <dd class="text-sm text-gray-900">{fields.length}</dd>
-            </div>
-            <div>
-              <dt class="text-xs font-medium text-gray-500">Total de Entradas</dt>
-              <dd class="text-sm text-gray-900">{entryCount.count}</dd>
-            </div>
-          </dl>
+    <div class="lg:col-span-2">
+      <div class="bg-white rounded-lg shadow border border-gray-200">
+        <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+          <h2 class="text-lg font-semibold text-gray-900">Campos de la Categoría</h2>
+          {!(category as any).is_system && (
+            <button 
+              id="addFieldBtn"
+              class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition text-sm font-medium"
+            >
+              + Añadir Campo
+            </button>
+          )}
         </div>
 
-        {!(category as any).is_system && (
-          <div class="bg-white rounded-lg shadow border border-gray-200 p-6">
-            <h2 class="text-lg font-semibold text-gray-900 mb-4">Acciones</h2>
-            <div class="space-y-2">
-              <button 
-                id="exportBtn"
-                class="w-full px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition text-sm font-medium"
-              >
-                Exportar Categoría (JSON)
-              </button>
-              <button 
-                id="deleteBtn"
-                class="w-full px-4 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition text-sm font-medium"
-              >
-                Eliminar Categoría
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      <!-- Campos -->
-      <div class="lg:col-span-2">
-        <div class="bg-white rounded-lg shadow border border-gray-200">
-          <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-            <h2 class="text-lg font-semibold text-gray-900">Campos de la Categoría</h2>
-            {!(category as any).is_system && (
-              <button 
-                id="addFieldBtn"
-                class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition text-sm font-medium"
-              >
-                + Añadir Campo
-              </button>
-            )}
-          </div>
-
-          <div class="p-6">
-            {fields.length === 0 ? (
-              <div class="text-center py-12">
-                <svg class="w-12 h-12 text-gray-300 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        <div class="p-6 space-y-8">
+          {/* CAMPOS HEREDADOS */}
+          {inheritedFields.length > 0 && (
+            <div>
+              <div class="flex items-center gap-2 mb-4">
+                <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
-                <p class="text-gray-500 mb-4">No hay campos definidos</p>
+                <h3 class="text-sm font-semibold text-gray-500 uppercase tracking-wide">
+                  Campos Heredados de Entity
+                </h3>
+              </div>
+              
+              <div class="space-y-3 pl-6 border-l-2 border-gray-200">
+                {inheritedFields.map((field: any) => (
+                  <div class="border border-gray-200 bg-gray-50 rounded-lg p-4">
+                    <div class="flex items-start justify-between">
+                      <div class="flex-1">
+                        <div class="flex items-center gap-3 mb-2">
+                          <h3 class="font-semibold text-gray-700">{field.label}</h3>
+                          <span class="px-2 py-0.5 bg-gray-200 text-gray-600 text-xs font-medium rounded">
+                            {field.type}
+                          </span>
+                          {field.required === 1 && (
+                            <span class="px-2 py-0.5 bg-gray-200 text-gray-600 text-xs font-medium rounded">
+                              Requerido
+                            </span>
+                          )}
+                          <span class="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-medium rounded">
+                            🔗 Heredado
+                          </span>
+                        </div>
+                        <p class="text-xs font-mono text-gray-500 mb-1">Campo: {field.name}</p>
+                        {field.help_text && (
+                          <p class="text-sm text-gray-600">{field.help_text}</p>
+                        )}
+                      </div>
+                      {/* No se puede eliminar campos heredados */}
+                      <div class="text-gray-400" title="Los campos heredados no se pueden eliminar">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                        </svg>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* CAMPOS PERSONALIZADOS */}
+          <div>
+            <div class="flex items-center gap-2 mb-4">
+              <svg class="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+              </svg>
+              <h3 class="text-sm font-semibold text-indigo-900 uppercase tracking-wide">
+                Campos Personalizados ({customFields.length})
+              </h3>
+            </div>
+
+            {customFields.length === 0 ? (
+              <div class="text-center py-8 border-2 border-dashed border-gray-300 rounded-lg">
+                <p class="text-gray-500 mb-3">No hay campos personalizados aún</p>
                 {!(category as any).is_system && (
-                  <button class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition">
+                  <button 
+                    onclick="document.getElementById('addFieldBtn')?.click()"
+                    class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition text-sm"
+                  >
                     Añadir Primer Campo
                   </button>
                 )}
               </div>
             ) : (
-              <div class="space-y-3">
-                {fields.map((field: any) => (
-                  <div class="border border-gray-200 rounded-lg p-4 hover:border-indigo-300 transition">
+              <div class="space-y-3 pl-6 border-l-2 border-indigo-200">
+                {customFields.map((field: any) => (
+                  <div class="border border-gray-200 rounded-lg p-4 hover:border-indigo-300 transition bg-white">
                     <div class="flex items-start justify-between">
                       <div class="flex-1">
                         <div class="flex items-center gap-3 mb-2">
                           <h3 class="font-semibold text-gray-900">{field.label}</h3>
-                          <span class="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs font-medium rounded">
+                          <span class="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-xs font-medium rounded">
                             {field.type}
                           </span>
                           {field.required === 1 && (
@@ -167,11 +184,14 @@ const entryCount = db.prepare('SELECT COUNT(*) as count FROM entries WHERE categ
                           </details>
                         )}
                       </div>
+                      
+                      {/* BOTÓN ELIMINAR (solo campos personalizados) */}
                       {!(category as any).is_system && (
                         <button 
-                          class="delete-field text-gray-400 hover:text-red-600 transition ml-4"
+                          class="delete-field text-gray-400 hover:text-red-600 transition ml-4 group"
                           data-id={field.id}
                           data-name={field.label}
+                          title="Eliminar campo"
                         >
                           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -220,7 +240,26 @@ const entryCount = db.prepare('SELECT COUNT(*) as count FROM entries WHERE categ
             <option value="enum">Enumeración (opciones)</option>
             <option value="list">Lista</option>
             <option value="json">JSON</option>
+            <option value="relation">Relación (FK a otra categoría)</option>
           </select>
+        </div>
+        <div id="relationConfig" class="hidden mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <label class="block text-sm font-medium text-gray-700 mb-2">
+            Categoría relacionada *
+          </label>
+          <select id="relationCategory" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+            <option value="">Selecciona una categoría...</option>
+            <!-- Se llenará dinámicamente -->
+          </select>
+          
+          <label class="flex items-center gap-2 mt-3">
+            <input type="checkbox" id="relationMultiple" class="rounded" />
+            <span class="text-sm text-gray-700">Permitir múltiples relaciones</span>
+          </label>
+          
+          <p class="text-xs text-gray-600 mt-2">
+            💡 Esto creará un selector para elegir entrada(s) de la categoría seleccionada
+          </p>
         </div>
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-2">Texto de Ayuda</label>
@@ -315,7 +354,12 @@ const entryCount = db.prepare('SELECT COUNT(*) as count FROM entries WHERE categ
         const id = (btn as HTMLElement).dataset.id;
         const name = (btn as HTMLElement).dataset.name;
         
-        if (!confirm(`¿Eliminar el campo "${name}"?`)) return;
+        const confirmed = confirm(
+          `¿Eliminar el campo "${name}"?\n\n` +
+          '⚠️ ADVERTENCIA: También se eliminarán todos los datos de este campo en las entradas existentes.'
+        );
+        
+        if (!confirmed) return;
         
         try {
           const response = await fetch('/api/fields', {
@@ -324,12 +368,104 @@ const entryCount = db.prepare('SELECT COUNT(*) as count FROM entries WHERE categ
             body: JSON.stringify({ id })
           });
           
-          if (response.ok) window.location.reload();
+          if (response.ok) {
+            // Animación de salida
+            const fieldCard = btn.closest('.border');
+            if (fieldCard) {
+              fieldCard.style.opacity = '0';
+              fieldCard.style.transform = 'translateX(-20px)';
+              fieldCard.style.transition = 'all 0.3s ease';
+              setTimeout(() => window.location.reload(), 300);
+            }
+          } else {
+            const error = await response.json();
+            alert('Error al eliminar: ' + error.error);
+          }
         } catch (error) {
           alert('Error al eliminar el campo');
         }
       });
     });
+
+    document.getElementById('fieldType')?.addEventListener('change', async (e) => {
+      const type = (e.target as HTMLSelectElement).value;
+      const relationConfig = document.getElementById('relationConfig');
+      
+      if (type === 'relation') {
+        relationConfig?.classList.remove('hidden');
+        
+        // Cargar categorías disponibles
+        const response = await fetch('/api/categories');
+        const categories = await response.json();
+        
+        const select = document.getElementById('relationCategory') as HTMLSelectElement;
+        select.innerHTML = '<option value="">Selecciona una categoría...</option>' +
+          categories.map((cat: any) => 
+            `<option value="${cat.id}">${cat.name}</option>`
+          ).join('');
+      } else {
+        relationConfig?.classList.add('hidden');
+      }
+    });
+
+    document.getElementById('fieldForm')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const type = (document.getElementById('fieldType') as HTMLSelectElement).value;
+      let config: any = {};
+      
+      if (type === 'relation') {
+        const relatedCategoryId = (document.getElementById('relationCategory') as HTMLSelectElement).value;
+        const allowMultiple = (document.getElementById('relationMultiple') as HTMLInputElement).checked;
+        
+        if (!relatedCategoryId) {
+          alert('Debes seleccionar una categoría relacionada');
+          return;
+        }
+        
+        config = {
+          related_category_id: relatedCategoryId,
+          allow_multiple: allowMultiple
+        };
+      }
+      
+      const data = {
+        category_id: categoryId,
+        name: (document.getElementById('fieldName') as HTMLInputElement).value || 
+              generateSlug((document.getElementById('fieldLabel') as HTMLInputElement).value),
+        label: (document.getElementById('fieldLabel') as HTMLInputElement).value,
+        type: type,
+        help_text: (document.getElementById('fieldHelp') as HTMLInputElement).value,
+        required: (document.getElementById('fieldRequired') as HTMLInputElement).checked,
+        unique_value: (document.getElementById('fieldUnique') as HTMLInputElement).checked,
+        config: config
+      };
+      
+      try {
+        const response = await fetch('/api/fields', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+        
+        if (response.ok) {
+          window.location.reload();
+        } else {
+          const error = await response.json();
+          alert('Error: ' + error.error);
+        }
+      } catch (error) {
+        alert('Error al crear el campo');
+      }
+    });
+
+    function generateSlug(text: string): string {
+      return text.toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '');
+    }
 
     // Delete category
     document.getElementById('deleteBtn')?.addEventListener('click', async () => {

@@ -7,9 +7,11 @@ const categories = db.prepare('SELECT id, name FROM categories WHERE is_system =
 
 let tasks: any[] = [];
 if (taskCategory) {
+  // SOLO tareas principales (sin parent)
   const rawTasks = db.prepare(`
     SELECT * FROM entries 
     WHERE category_id = ? 
+      AND (json_extract(data, '$.parent_task_id') IS NULL OR json_extract(data, '$.parent_task_id') = '')
     ORDER BY created_at DESC
   `).all(taskCategory.id) as any[];
   
@@ -177,7 +179,6 @@ if (taskCategory) {
           </thead>
           <tbody id="taskTableBody" class="divide-y divide-gray-200">
             {tasks.map((task: any) => {
-              const isParent = task.data.parent_task_id === null || task.data.parent_task_id === '';
               const categoryName = task.data.related_category_id ? 
                 (() => {
                   const cat = categories.find((c: any) => c.id === task.data.related_category_id);
@@ -185,95 +186,101 @@ if (taskCategory) {
                 })() : '-';
               
               return (
-              <tr 
-                class="task-row hover:bg-gray-50 transition"
-                data-task-id={task.id}
-                data-parent-id={task.data.parent_task_id || ''}
-                data-priority={task.data.priority}
-                data-category-id={task.data.related_category_id || ''}
-                data-completed={task.data.is_completed ? 'true' : 'false'}
-                data-title={task.data.title.toLowerCase()}
-                data-due-date={task.data.due_date || ''}
-              >
-                <td class="px-6 py-4">
-                  {isParent ? (
-                    <button class="expand-btn text-gray-400 hover:text-gray-600 transition" data-task-id={task.id}>
-                      <svg class="w-4 h-4 expand-icon transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <tr 
+                  class="task-row hover:bg-gray-50 transition bg-white font-medium border-l-4 border-indigo-500"
+                  data-task-id={task.id}
+                  data-priority={task.data.priority}
+                  data-category-id={task.data.related_category_id || ''}
+                  data-completed={task.data.is_completed ? 'true' : 'false'}
+                  data-title={task.data.title.toLowerCase()}
+                  data-due-date={task.data.due_date || ''}
+                >
+                  {/* Botón expandir */}
+                  <td class="px-6 py-4 w-12">
+                    <button 
+                      class="expand-btn text-gray-400 hover:text-indigo-600 transition focus:outline-none"
+                      data-task-id={task.id}
+                      title="Ver subtareas"
+                    >
+                      <svg class="w-5 h-5 expand-icon transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
                       </svg>
                     </button>
-                  ) : null}
-                </td>
-                <td class="px-6 py-4">
-                  <input type="checkbox" class="task-select rounded" data-task-id={task.id} />
-                </td>
-                <td class="px-6 py-4">
-                  <div class="flex items-center gap-2">
-                    <input 
-                      type="checkbox" 
-                      class="task-checkbox w-4 h-4 rounded"
-                      data-task-id={task.id}
-                      checked={task.data.is_completed}
-                    />
-                    <a href={`/tasks/${task.id}`} class={`hover:text-indigo-600 ${isParent ? 'font-semibold text-gray-900' : 'text-gray-700'}`}>
-                      {task.data.title}
-                    </a>
-                  </div>
-                  {categoryName !== '-' && (
-                    <td class="px-6 py-4">
-                      {(() => {
-                        if (!task.data.related_category_id) return <span class="text-gray-400 text-sm">-</span>;
-                        const cat = categories.find((c: any) => c.id === task.data.related_category_id);
-                        return cat ? (
-                          <span class="category-badge">
-                            📁 {(cat as any).name}
-                          </span>
-                        ) : <span class="text-gray-400 text-sm">-</span>;
-                      })()}
-                    </td>
-                  )}
-                </td>
-                <td class="px-6 py-4">
-                  <span class={`px-2 py-1 rounded text-xs font-medium ${
-                    task.data.priority === 'critical' ? 'bg-red-100 text-red-700' :
-                    task.data.priority === 'high' ? 'bg-orange-100 text-orange-700' :
-                    task.data.priority === 'medium' ? 'bg-blue-100 text-blue-700' :
-                    'bg-gray-100 text-gray-600'
-                  }`}>
-                    {task.data.priority}
-                  </span>
-                </td>
-                <td class="px-6 py-4 text-sm text-gray-500">
-                  {(() => {
-                    if (!task.data.related_category_id) return '-';
-                    const cat = categories.find((c: any) => c.id === task.data.related_category_id);
-                    return cat ? (cat as any).name : '-';
-                  })()}
-                </td>
-                <td class="px-6 py-4 text-sm text-gray-500">
-                  {task.data.due_date ? new Date(task.data.due_date).toLocaleDateString('es-ES') : '-'}
-                </td>
-                <td class="px-6 py-4">
-                  <div class="flex flex-wrap gap-1">
-                    {task.data.tags?.slice(0, 2).map((tag: string) => (
-                      <span class="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs">
-                        #{tag}
-                      </span>
-                    ))}
-                    {task.data.tags?.length > 2 && (
-                      <span class="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs">
-                        +{task.data.tags.length - 2}
-                      </span>
-                    )}
-                  </div>
-                </td>
-                <td class="px-6 py-4">
-                  <button class="delete-task text-red-600 hover:text-red-800 text-sm" data-task-id={task.id}>
-                    Eliminar
-                  </button>
-                </td>
-              </tr>
-            );
+                  </td>
+                  
+                  <td class="px-6 py-4">
+                    <input type="checkbox" class="task-select rounded" data-task-id={task.id} />
+                  </td>
+                  
+                  <td class="px-6 py-4">
+                    <div class="flex items-center gap-3">
+                      <input 
+                        type="checkbox" 
+                        class="task-checkbox w-5 h-5 rounded"
+                        data-task-id={task.id}
+                        checked={task.data.is_completed}
+                      />
+                      <div class="flex-1">
+                        <a 
+                          href={`/tasks/${task.id}`} 
+                          class="font-semibold text-gray-900 hover:text-indigo-600 transition"
+                        >
+                          {task.data.title}
+                        </a>
+                        {categoryName !== '-' && (
+                          <div class="text-xs text-gray-500 mt-1">
+                            📁 {categoryName}
+                            {task.data.applies_to_all && <span class="ml-2 text-purple-600">• Todas las entradas</span>}
+                            {task.data.specific_entry_ids?.length > 0 && (
+                              <span class="ml-2 text-blue-600">• {task.data.specific_entry_ids.length} específica(s)</span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </td>
+                  
+                  <td class="px-6 py-4">
+                    <span class={`px-2.5 py-1 rounded text-xs font-medium ${
+                      task.data.priority === 'critical' ? 'bg-red-100 text-red-700' :
+                      task.data.priority === 'high' ? 'bg-orange-100 text-orange-700' :
+                      task.data.priority === 'medium' ? 'bg-blue-100 text-blue-700' :
+                      'bg-gray-100 text-gray-600'
+                    }`}>
+                      {task.data.priority}
+                    </span>
+                  </td>
+                  
+                  <td class="px-6 py-4 text-sm text-gray-500">
+                    {categoryName}
+                  </td>
+                  
+                  <td class="px-6 py-4 text-sm text-gray-500">
+                    {task.data.due_date ? new Date(task.data.due_date).toLocaleDateString('es-ES') : '-'}
+                  </td>
+                  
+                  <td class="px-6 py-4">
+                    <div class="flex flex-wrap gap-1">
+                      {task.data.tags?.slice(0, 2).map((tag: string) => (
+                        <span class="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs">
+                          #{tag}
+                        </span>
+                      ))}
+                      {task.data.tags?.length > 2 && (
+                        <span class="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs">
+                          +{task.data.tags.length - 2}
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                  
+                  <td class="px-6 py-4">
+                    <button class="delete-task text-red-600 hover:text-red-800 text-sm font-medium" data-task-id={task.id}>
+                      Eliminar
+                    </button>
+                  </td>
+                </tr>
+              );
             })}
           </tbody>
         </table>
@@ -313,12 +320,13 @@ if (taskCategory) {
   
   /* Subtareas: indentadas y con fondo diferente */
   .subtask-row {
-    background-color: #f9fafb;
+    background-color: linear-gradient(to right, #f9fafb 0%, #ffffff 100%);
     border-left: 3px solid #cbd5e1; /* Barra gris */
+    transition: max-height 0.3s ease, opacity 0.3s ease;
   }
   
   .subtask-row:hover {
-    background-color: #f1f5f9;
+    background-color: linear-gradient(to right, #f1f5f9 0%, #f9fafb 100%);
   }
   
   /* Icono de expansión suave */
@@ -370,216 +378,259 @@ if (taskCategory) {
 
   <script>
     let allTasks: any[] = [];
-let filteredTasks: any[] = [];
-let currentSort = { field: null as string | null, direction: null as 'asc' | 'desc' | null };
+    let filteredTasks: any[] = [];
+    let currentSort = { field: null as string | null, direction: null as 'asc' | 'desc' | null };
+    const expandedTasks = new Set<string>();
 
-document.addEventListener('DOMContentLoaded', () => {
-  const rows = document.querySelectorAll('.task-row');
-  allTasks = Array.from(rows).map(row => ({
-    element: row,
-    id: (row as HTMLElement).dataset.taskId,
-    parentId: (row as HTMLElement).dataset.parentId,
-    priority: (row as HTMLElement).dataset.priority,
-    categoryId: (row as HTMLElement).dataset.categoryId,
-    completed: (row as HTMLElement).dataset.completed === 'true',
-    title: (row as HTMLElement).dataset.title,
-    dueDate: (row as HTMLElement).dataset.dueDate
-  }));
-  filteredTasks = [...allTasks];
-});
-
-// ORDENAMIENTO CORREGIDO
-function sortTasks() {
-  if (!currentSort.direction || !currentSort.field) {
-    // Sin orden: restaurar orden original del DOM
-    const tbody = document.getElementById('taskTableBody')!;
-    allTasks.forEach(task => tbody.appendChild(task.element));
-    return;
-  }
-
-  const tbody = document.getElementById('taskTableBody')!;
-  
-  // Ordenar solo tareas principales (sin parentId)
-  const mainTasks = filteredTasks.filter(t => !t.parentId);
-  
-  mainTasks.sort((a, b) => {
-    let aVal: any, bVal: any;
-    
-    if (currentSort.field === 'title') {
-      aVal = a.title;
-      bVal = b.title;
-    } else if (currentSort.field === 'priority') {
-      const priorityOrder = { low: 1, medium: 2, high: 3, critical: 4 };
-      aVal = priorityOrder[a.priority as keyof typeof priorityOrder] || 0;
-      bVal = priorityOrder[b.priority as keyof typeof priorityOrder] || 0;
-    } else if (currentSort.field === 'due_date') {
-      aVal = a.dueDate || '9999-12-31';
-      bVal = b.dueDate || '9999-12-31';
-    }
-    
-    const comparison = aVal > bVal ? 1 : aVal < bVal ? -1 : 0;
-    return currentSort.direction === 'asc' ? comparison : -comparison;
-  });
-  
-  // Reordenar DOM manteniendo subtareas debajo de sus padres
-  mainTasks.forEach(mainTask => {
-    tbody.appendChild(mainTask.element);
-    
-    // Insertar subtareas inmediatamente después
-    const subtasks = allTasks.filter(t => t.parentId === mainTask.id);
-    subtasks.forEach(sub => tbody.appendChild(sub.element));
-  });
-}
-
-// HEADERS CON ORDENAMIENTO CÍCLICO
-document.querySelectorAll('[data-sort]').forEach(header => {
-  header.addEventListener('click', () => {
-    const sortBy = (header as HTMLElement).dataset.sort!;
-    const icon = header.querySelector('.sort-icon');
-    
-    // Resetear otros headers
-    document.querySelectorAll('[data-sort]').forEach(h => {
-      if (h !== header) {
-        const otherIcon = h.querySelector('.sort-icon');
-        if (otherIcon) {
-          (otherIcon as HTMLElement).style.opacity = '0.3';
-          (otherIcon as HTMLElement).style.transform = 'none';
-        }
-      }
+    document.addEventListener('DOMContentLoaded', () => {
+      const rows = document.querySelectorAll('.task-row');
+      allTasks = Array.from(rows).map(row => ({
+        element: row,
+        id: (row as HTMLElement).dataset.taskId,
+        parentId: (row as HTMLElement).dataset.parentId,
+        priority: (row as HTMLElement).dataset.priority,
+        categoryId: (row as HTMLElement).dataset.categoryId,
+        completed: (row as HTMLElement).dataset.completed === 'true',
+        title: (row as HTMLElement).dataset.title,
+        dueDate: (row as HTMLElement).dataset.dueDate
+      }));
+      filteredTasks = [...allTasks];
     });
-    
-    // Ciclar: null → asc → desc → null
-    if (currentSort.field === sortBy) {
-      if (currentSort.direction === null) {
-        currentSort.direction = 'asc';
-      } else if (currentSort.direction === 'asc') {
-        currentSort.direction = 'desc';
-      } else {
-        currentSort.direction = null;
-        currentSort.field = null;
-      }
-    } else {
-      currentSort.field = sortBy;
-      currentSort.direction = 'asc';
-    }
-    
-    // Actualizar icono visual
-    if (currentSort.direction === null) {
-      (icon as HTMLElement).style.opacity = '0.3';
-      (icon as HTMLElement).style.transform = 'none';
-    } else if (currentSort.direction === 'asc') {
-      (icon as HTMLElement).style.opacity = '1';
-      (icon as HTMLElement).style.transform = 'none';
-    } else {
-      (icon as HTMLElement).style.opacity = '1';
-      (icon as HTMLElement).style.transform = 'rotate(180deg)';
-    }
-    
-    sortTasks();
-  });
-});
 
-// EXPANSIÓN DE SUBTAREAS (sin conflicto con ordenamiento)
-document.querySelectorAll('.expand-btn').forEach(btn => {
+    // ORDENAMIENTO CORREGIDO
+    function sortTasks() {
+      if (!currentSort.direction || !currentSort.field) {
+        // Sin orden: restaurar orden original del DOM
+        const tbody = document.getElementById('taskTableBody')!;
+        allTasks.forEach(task => tbody.appendChild(task.element));
+        return;
+      }
+
+      const tbody = document.getElementById('taskTableBody')!;
+      
+      // Ordenar solo tareas principales (sin parentId)
+      const mainTasks = filteredTasks.filter(t => !t.parentId);
+      
+      mainTasks.sort((a, b) => {
+        let aVal: any, bVal: any;
+        
+        if (currentSort.field === 'title') {
+          aVal = a.title;
+          bVal = b.title;
+        } else if (currentSort.field === 'priority') {
+          const priorityOrder = { low: 1, medium: 2, high: 3, critical: 4 };
+          aVal = priorityOrder[a.priority as keyof typeof priorityOrder] || 0;
+          bVal = priorityOrder[b.priority as keyof typeof priorityOrder] || 0;
+        } else if (currentSort.field === 'due_date') {
+          aVal = a.dueDate || '9999-12-31';
+          bVal = b.dueDate || '9999-12-31';
+        }
+        
+        const comparison = aVal > bVal ? 1 : aVal < bVal ? -1 : 0;
+        return currentSort.direction === 'asc' ? comparison : -comparison;
+      });
+      
+      // Reordenar DOM manteniendo subtareas debajo de sus padres
+      mainTasks.forEach(mainTask => {
+        tbody.appendChild(mainTask.element);
+        
+        // Insertar subtareas inmediatamente después
+        const subtasks = allTasks.filter(t => t.parentId === mainTask.id);
+        subtasks.forEach(sub => tbody.appendChild(sub.element));
+      });
+    }
+
+    // HEADERS CON ORDENAMIENTO CÍCLICO
+    document.querySelectorAll('[data-sort]').forEach(header => {
+      header.addEventListener('click', () => {
+        const sortBy = (header as HTMLElement).dataset.sort!;
+        const icon = header.querySelector('.sort-icon');
+        
+        // Resetear otros headers
+        document.querySelectorAll('[data-sort]').forEach(h => {
+          if (h !== header) {
+            const otherIcon = h.querySelector('.sort-icon');
+            if (otherIcon) {
+              (otherIcon as HTMLElement).style.opacity = '0.3';
+              (otherIcon as HTMLElement).style.transform = 'none';
+            }
+          }
+        });
+        
+        // Ciclar: null → asc → desc → null
+        if (currentSort.field === sortBy) {
+          if (currentSort.direction === null) {
+            currentSort.direction = 'asc';
+          } else if (currentSort.direction === 'asc') {
+            currentSort.direction = 'desc';
+          } else {
+            currentSort.direction = null;
+            currentSort.field = null;
+          }
+        } else {
+          currentSort.field = sortBy;
+          currentSort.direction = 'asc';
+        }
+        
+        // Actualizar icono visual
+        if (currentSort.direction === null) {
+          (icon as HTMLElement).style.opacity = '0.3';
+          (icon as HTMLElement).style.transform = 'none';
+        } else if (currentSort.direction === 'asc') {
+          (icon as HTMLElement).style.opacity = '1';
+          (icon as HTMLElement).style.transform = 'none';
+        } else {
+          (icon as HTMLElement).style.opacity = '1';
+          (icon as HTMLElement).style.transform = 'rotate(180deg)';
+        }
+        
+        sortTasks();
+      });
+    });
+
+    document.querySelectorAll('.expand-btn').forEach(btn => {
   btn.addEventListener('click', async (e) => {
     e.stopPropagation();
-    const taskId = (btn as HTMLElement).dataset.taskId;
+    const taskId = (btn as HTMLElement).dataset.taskId!;
     const icon = btn.querySelector('.expand-icon');
-    const row = (btn as HTMLElement).closest('tr');
+    const row = btn.closest('tr')!;
     
-    const isExpanded = icon?.classList.contains('rotate-90');
+    const isExpanded = expandedTasks.has(taskId);
     
     if (isExpanded) {
+      // Colapsar
+      expandedTasks.delete(taskId);
       icon?.classList.remove('rotate-90');
+      
       // Ocultar subtareas
-      document.querySelectorAll(`[data-parent-id="${taskId}"]`).forEach(sub => {
-        (sub as HTMLElement).style.display = 'none';
+      const subtasks = document.querySelectorAll(`[data-parent-id="${taskId}"]`);
+      subtasks.forEach(sub => {
+        (sub as HTMLElement).style.maxHeight = '0';
+        (sub as HTMLElement).style.opacity = '0';
+        setTimeout(() => (sub as HTMLElement).remove(), 300);
       });
+      
     } else {
+      // Expandir
+      expandedTasks.add(taskId);
       icon?.classList.add('rotate-90');
       
-      // Verificar si ya están cargadas
-      const existingSubtasks = document.querySelectorAll(`[data-parent-id="${taskId}"]`);
+      // Mostrar loading
+      const loadingRow = document.createElement('tr');
+      loadingRow.className = 'subtask-loading bg-gray-50';
+      loadingRow.innerHTML = `
+        <td colspan="8" class="px-6 py-3 text-center text-sm text-gray-500">
+          <svg class="animate-spin w-4 h-4 inline-block mr-2" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          Cargando subtareas...
+        </td>
+      `;
+      row.after(loadingRow);
       
-      if (existingSubtasks.length === 0) {
-        // Cargar por primera vez
-        await loadSubtasks(taskId, row!);
-      } else {
-        // Solo mostrar
-        existingSubtasks.forEach(sub => {
-          (sub as HTMLElement).style.display = '';
-        });
+      try {
+        // Cargar subtareas
+        const response = await fetch(`/api/tasks?parent_id=${taskId}`);
+        const subtasks = await response.json();
+        
+        // Eliminar loading
+        loadingRow.remove();
+        
+        if (subtasks.length === 0) {
+          const emptyRow = document.createElement('tr');
+          emptyRow.className = 'subtask-row bg-gray-50';
+          emptyRow.dataset.parentId = taskId;
+          emptyRow.innerHTML = `
+            <td colspan="8" class="px-6 py-3 text-center text-sm text-gray-500 italic">
+              No hay subtareas
+            </td>
+          `;
+          row.after(emptyRow);
+        } else {
+          // Insertar subtareas
+          let insertAfter = row;
+          subtasks.forEach((subtask: any, index: number) => {
+            const subRow = createSubtaskRow(subtask, taskId, index);
+            insertAfter.after(subRow);
+            insertAfter = subRow;
+            
+            // Animación de entrada
+            setTimeout(() => {
+              subRow.style.maxHeight = '100px';
+              subRow.style.opacity = '1';
+            }, index * 50);
+          });
+        }
+      } catch (error) {
+        console.error('Error loading subtasks:', error);
+        loadingRow.innerHTML = `
+          <td colspan="8" class="px-6 py-3 text-center text-sm text-red-600">
+            Error al cargar subtareas
+          </td>
+        `;
       }
     }
   });
 });
 
-async function loadSubtasks(parentId: string, parentRow: Element) {
-  try {
-    const response = await fetch(`/api/tasks?parent_id=${parentId}`);
-    const subtasks = await response.json();
-    
-    const tbody = document.getElementById('taskTableBody')!;
-    
-    subtasks.forEach((subtask: any) => {
-      const newRow = document.createElement('tr');
-      newRow.className = 'subtask-row';
-      newRow.dataset.parentId = parentId;
-      newRow.dataset.taskId = subtask.id;
-      
-      const priorityColors = {
-        low: 'bg-gray-100 text-gray-700',
-        medium: 'bg-blue-100 text-blue-700',
-        high: 'bg-orange-100 text-orange-700',
-        critical: 'bg-red-100 text-red-700'
-      };
-      
-      newRow.innerHTML = `
-        <td></td>
-        <td class="px-6 py-4">
-          <input type="checkbox" class="task-select rounded" data-task-id="${subtask.id}" />
-        </td>
-        <td class="px-6 py-4">
-          <div class="flex items-center gap-2 pl-8">
-            <span class="text-indigo-400">└─</span>
-            <input type="checkbox" class="task-checkbox w-4 h-4 rounded" data-task-id="${subtask.id}" ${subtask.data.is_completed ? 'checked' : ''} />
-            <a href="/tasks/${subtask.id}" class="text-gray-700 hover:text-indigo-600 text-sm">${subtask.data.title}</a>
-          </div>
-        </td>
-        <td class="px-6 py-4">
-          <span class="px-2 py-1 rounded text-xs font-medium ${priorityColors[subtask.data.priority as keyof typeof priorityColors]}">
-            ${subtask.data.priority}
-          </span>
-        </td>
-        <td class="px-6 py-4 text-sm text-gray-500">-</td>
-        <td class="px-6 py-4 text-sm text-gray-500">${subtask.data.due_date ? new Date(subtask.data.due_date).toLocaleDateString('es-ES') : '-'}</td>
-        <td class="px-6 py-4">
-          ${subtask.data.tags?.slice(0, 2).map((tag: string) => `
-            <span class="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs">#${tag}</span>
-          `).join('') || ''}
-        </td>
-        <td class="px-6 py-4">
-          <button class="delete-task text-red-600 hover:text-red-800 text-sm" data-task-id="${subtask.id}">Eliminar</button>
-        </td>
-      `;
-      
-      // Insertar después del padre
-      parentRow.after(newRow);
-      
-      allTasks.push({
-        element: newRow,
-        id: subtask.id,
-        parentId: parentId,
-        priority: subtask.data.priority,
-        categoryId: '',
-        completed: subtask.data.is_completed,
-        title: subtask.data.title.toLowerCase(),
-        dueDate: subtask.data.due_date || ''
-      });
-    });
-  } catch (error) {
-    console.error('Error loading subtasks:', error);
-  }
+function createSubtaskRow(subtask: any, parentId: string, index: number): HTMLTableRowElement {
+  const row = document.createElement('tr');
+  row.className = 'subtask-row transition-all duration-300';
+  row.dataset.parentId = parentId;
+  row.dataset.taskId = subtask.id;
+  row.style.maxHeight = '0';
+  row.style.opacity = '0';
+  row.style.overflow = 'hidden';
+  
+  const priorityColors = {
+    low: 'bg-gray-100 text-gray-700',
+    medium: 'bg-blue-100 text-blue-700',
+    high: 'bg-orange-100 text-orange-700',
+    critical: 'bg-red-100 text-red-700'
+  };
+  
+  row.innerHTML = `
+    <td class="px-6 py-3"></td>
+    <td class="px-6 py-3">
+      <input type="checkbox" class="task-select rounded" data-task-id="${subtask.id}" />
+    </td>
+    <td class="px-6 py-3">
+      <div class="flex items-center gap-3 pl-8">
+        <span class="text-indigo-400 font-bold">└─</span>
+        <input 
+          type="checkbox" 
+          class="task-checkbox w-4 h-4 rounded" 
+          data-task-id="${subtask.id}" 
+          ${subtask.data.is_completed ? 'checked' : ''} 
+        />
+        <a href="/tasks/${subtask.id}" class="text-sm text-gray-700 hover:text-indigo-600">
+          ${subtask.data.title}
+        </a>
+      </div>
+    </td>
+    <td class="px-6 py-3">
+      <span class="px-2 py-1 rounded text-xs font-medium ${priorityColors[subtask.data.priority as keyof typeof priorityColors]}">
+        ${subtask.data.priority}
+      </span>
+    </td>
+    <td class="px-6 py-3 text-sm text-gray-500">-</td>
+    <td class="px-6 py-3 text-sm text-gray-500">
+      ${subtask.data.due_date ? new Date(subtask.data.due_date).toLocaleDateString('es-ES') : '-'}
+    </td>
+    <td class="px-6 py-3">
+      ${subtask.data.tags?.slice(0, 2).map((tag: string) => `
+        <span class="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs">#${tag}</span>
+      `).join('') || ''}
+    </td>
+    <td class="px-6 py-3">
+      <button class="delete-task text-red-600 hover:text-red-800 text-sm" data-task-id="${subtask.id}">
+        Eliminar
+      </button>
+    </td>
+  `;
+  
+  return row;
 }
   </script>
 </body>
