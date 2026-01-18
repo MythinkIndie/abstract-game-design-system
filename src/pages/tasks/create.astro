@@ -1,0 +1,380 @@
+---
+// src/pages/tasks/create.astro
+import { db } from '../../lib/db';
+
+const url = new URL(Astro.request.url);
+const parentTaskId = url.searchParams.get('parent_id');
+const relatedCategoryId = url.searchParams.get('category_id');
+const relatedEntryId = url.searchParams.get('entry_id');
+
+let parentTask = null;
+if (parentTaskId) {
+  parentTask = db.prepare('SELECT * FROM entries WHERE id = ?').get(parentTaskId) as any;
+  if (parentTask) {
+    parentTask.data = JSON.parse(parentTask.data);
+  }
+}
+
+const categories = db.prepare('SELECT id, name, slug FROM categories WHERE is_system = 0 ORDER BY name').all();
+
+// Si hay entrada específica, pre-seleccionarla
+let preSelectedEntry = null;
+let categoryEntries: any[] = [];
+if (relatedEntryId && relatedCategoryId) {
+  preSelectedEntry = db.prepare('SELECT id, title FROM entries WHERE id = ?').get(relatedEntryId);
+  categoryEntries = db.prepare('SELECT id, title FROM entries WHERE category_id = ? ORDER BY title').all(relatedCategoryId);
+} else if (relatedCategoryId) {
+  categoryEntries = db.prepare('SELECT id, title FROM entries WHERE category_id = ? ORDER BY title').all(relatedCategoryId);
+}
+---
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{parentTask ? 'Nueva Subtarea' : 'Nueva Tarea'}</title>
+</head>
+<body class="bg-gray-50 min-h-screen">
+  <header class="bg-white shadow-sm border-b border-gray-200">
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+      <a href="/tasks" class="text-sm text-gray-500 hover:text-gray-700">← Volver a tareas</a>
+      <h1 class="text-2xl font-bold text-gray-900 mt-1">
+        {parentTask ? `Nueva Subtarea de: ${parentTask.data.title}` : 'Nueva Tarea'}
+      </h1>
+    </div>
+  </header>
+
+  <main class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <form id="taskForm" class="bg-white rounded-lg shadow border border-gray-200 p-8 space-y-6">
+      {parentTask && (
+        <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <p class="text-sm text-blue-900">
+            <strong>Subtarea de:</strong> {parentTask.data.title}
+          </p>
+          <input type="hidden" id="parent_task_id" value={parentTaskId} />
+        </div>
+      )}
+
+      <!-- Título -->
+      <div>
+        <label for="title" class="block text-sm font-medium text-gray-700 mb-2">
+          Título de la Tarea *
+        </label>
+        <input 
+          type="text" 
+          id="title" 
+          name="title"
+          required
+          class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+          placeholder="Ej: Crear modelos 3D de personajes"
+        />
+      </div>
+
+      <!-- Descripción -->
+      <div>
+        <label for="description" class="block text-sm font-medium text-gray-700 mb-2">
+          Descripción
+        </label>
+        <textarea 
+          id="description" 
+          name="description"
+          rows="4"
+          class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+          placeholder="Detalles de la tarea..."
+        ></textarea>
+      </div>
+
+      <div class="grid grid-cols-2 gap-4">
+        <!-- Prioridad -->
+        <div>
+          <label for="priority" class="block text-sm font-medium text-gray-700 mb-2">
+            Prioridad *
+          </label>
+          <select 
+            id="priority" 
+            name="priority"
+            required
+            class="w-full px-4 py-2 border border-gray-300 rounded-lg"
+          >
+            <option value="low">⬇️ Baja</option>
+            <option value="medium" selected>➡️ Media</option>
+            <option value="high">⬆️ Alta</option>
+            <option value="critical">🔥 Crítica</option>
+          </select>
+        </div>
+
+        <!-- Fecha Límite -->
+        <div>
+          <label for="due_date" class="block text-sm font-medium text-gray-700 mb-2">
+            Fecha Límite
+          </label>
+          <input 
+            type="date" 
+            id="due_date" 
+            name="due_date"
+            class="w-full px-4 py-2 border border-gray-300 rounded-lg"
+          />
+        </div>
+      </div>
+
+      <!-- Categoría Relacionada -->
+      <div>
+        <label for="related_category" class="block text-sm font-medium text-gray-700 mb-2">
+          Categoría Relacionada *
+        </label>
+        <select 
+          id="related_category" 
+          name="related_category"
+          required
+          class="w-full px-4 py-2 border border-gray-300 rounded-lg"
+        >
+          <option value="">Selecciona una categoría...</option>
+          {categories.map((cat: any) => (
+            <option value={cat.id} selected={cat.id === relatedCategoryId}>
+              {cat.name}
+            </option>
+          ))}
+        </select>
+        <p class="text-xs text-gray-500 mt-1">
+          Esta tarea se aplicará a las entradas de esta categoría
+        </p>
+      </div>
+
+      <!-- Aplicar a todas o específicas -->
+      <div class="border border-gray-200 rounded-lg p-4">
+        {preSelectedEntry ? (
+          <div class="mb-3 p-3 bg-blue-50 border border-blue-200 rounded">
+            <p class="text-sm text-blue-900">
+              <strong>Tarea vinculada a:</strong> {(preSelectedEntry as any).title}
+            </p>
+            <input type="hidden" id="preselected_entry" value={relatedEntryId} />
+          </div>
+        ) : null}
+        
+        <label class="flex items-center gap-2 mb-3">
+          <input 
+            type="checkbox" 
+            id="applies_to_all"
+            class="rounded"
+          />
+          <span class="text-sm font-medium text-gray-700">
+            ✨ Aplicar a TODAS las entradas de la categoría
+          </span>
+        </label>
+
+        <div id="specificEntriesSection" class="space-y-2">
+          <label class="block text-sm font-medium text-gray-700">
+            O selecciona entradas específicas:
+          </label>
+          <div id="entriesList" class="max-h-48 overflow-y-auto border border-gray-200 rounded p-3 space-y-1">
+            {categoryEntries.length > 0 ? (
+              categoryEntries.map((entry: any) => (
+                <label class="flex items-center gap-2 p-2 hover:bg-gray-50 rounded cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    class="entry-checkbox rounded" 
+                    value={entry.id}
+                    checked={entry.id === relatedEntryId}
+                  />
+                  <span class="text-sm text-gray-700">{entry.title}</span>
+                </label>
+              ))
+            ) : (
+              <p class="text-sm text-gray-500 text-center py-4">
+                Selecciona una categoría primero
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <!-- Etiquetas -->
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-2">
+          Etiquetas
+        </label>
+        <div class="flex gap-2 mb-2">
+          <input 
+            type="text" 
+            id="tagInput"
+            placeholder="Añadir etiqueta..."
+            class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm"
+          />
+          <button 
+            type="button"
+            id="addTagBtn"
+            class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+          >
+            +
+          </button>
+        </div>
+        <div id="tagsList" class="flex flex-wrap gap-2"></div>
+        <input type="hidden" id="tags" value="[]" />
+      </div>
+
+      <!-- Botones -->
+      <div class="flex gap-3 pt-4 border-t border-gray-200">
+        <button 
+          type="submit"
+          class="flex-1 px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition font-medium"
+        >
+          Crear {parentTask ? 'Subtarea' : 'Tarea'}
+        </button>
+        <a 
+          href="/tasks"
+          class="px-6 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition font-medium"
+        >
+          Cancelar
+        </a>
+      </div>
+    </form>
+  </main>
+
+  <script>
+    let selectedEntries: string[] = [];
+    
+    // Pre-seleccionar entrada si viene de parámetro
+    const preselectedEntry = (document.getElementById('preselected_entry') as HTMLInputElement)?.value;
+    if (preselectedEntry) {
+      selectedEntries.push(preselectedEntry);
+    }
+    
+    // Gestión de etiquetas
+    const tagInput = document.getElementById('tagInput') as HTMLInputElement;
+    const tagsList = document.getElementById('tagsList')!;
+    const tagsHidden = document.getElementById('tags') as HTMLInputElement;
+    let tags: string[] = [];
+
+    document.getElementById('addTagBtn')?.addEventListener('click', () => {
+      const value = tagInput.value.trim().toLowerCase();
+      if (!value || tags.includes(value)) return;
+
+      tags.push(value);
+      tagsHidden.value = JSON.stringify(tags);
+
+      const span = document.createElement('span');
+      span.className = 'px-3 py-1 bg-indigo-100 text-indigo-700 rounded-full text-sm flex items-center gap-2';
+      const tagValue = value; // Capturar en variable local
+      span.innerHTML = `#${tagValue} <button type="button" class="hover:text-indigo-900 remove-tag" data-tag="${tagValue}">×</button>`;
+      
+      tagsList.appendChild(span);
+      
+      // Event listener para eliminar
+      span.querySelector('.remove-tag')?.addEventListener('click', function() {
+        const tagToRemove = (this as HTMLElement).dataset.tag!;
+        tags = tags.filter(t => t !== tagToRemove);
+        tagsHidden.value = JSON.stringify(tags);
+        span.remove();
+      });
+      
+      tagInput.value = '';
+    });
+
+    tagInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        document.getElementById('addTagBtn')?.click();
+      }
+    });
+
+    // Cargar entradas de la categoría
+    const categorySelect = document.getElementById('related_category') as HTMLSelectElement;
+    const entriesList = document.getElementById('entriesList')!;
+    const appliesToAll = document.getElementById('applies_to_all') as HTMLInputElement;
+    const specificSection = document.getElementById('specificEntriesSection')!;
+
+    categorySelect.addEventListener('change', async () => {
+      const categoryId = categorySelect.value;
+      
+      if (!categoryId) {
+        entriesList.innerHTML = '<p class="text-sm text-gray-500 text-center py-4">Selecciona una categoría primero</p>';
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/entries?category_id=${categoryId}`);
+        const entries = await response.json();
+
+        if (entries.length === 0) {
+          entriesList.innerHTML = '<p class="text-sm text-gray-500 text-center py-4">No hay entradas en esta categoría</p>';
+        } else {
+          entriesList.innerHTML = entries.map((entry: any) => `
+            <label class="flex items-center gap-2 p-2 hover:bg-gray-50 rounded cursor-pointer">
+              <input 
+                type="checkbox" 
+                class="entry-checkbox rounded" 
+                value="${entry.id}"
+                data-title="${entry.title}"
+              />
+              <span class="text-sm text-gray-700">${entry.title}</span>
+            </label>
+          `).join('');
+
+          // Eventos de checkboxes
+          document.querySelectorAll('.entry-checkbox').forEach(cb => {
+            cb.addEventListener('change', (e) => {
+              const target = e.target as HTMLInputElement;
+              if (target.checked) {
+                selectedEntries.push(target.value);
+              } else {
+                selectedEntries = selectedEntries.filter(id => id !== target.value);
+              }
+            });
+          });
+        }
+      } catch (error) {
+        entriesList.innerHTML = '<p class="text-sm text-red-500 text-center py-4">Error al cargar entradas</p>';
+      }
+    });
+
+    // Toggle applies_to_all
+    appliesToAll.addEventListener('change', () => {
+      if (appliesToAll.checked) {
+        specificSection.style.display = 'none';
+      } else {
+        specificSection.style.display = 'block';
+      }
+    });
+
+    // Cargar entradas si ya hay categoría seleccionada
+    if (categorySelect.value) {
+      categorySelect.dispatchEvent(new Event('change'));
+    }
+
+    // Submit
+    document.getElementById('taskForm')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const data = {
+        title: (document.getElementById('title') as HTMLInputElement).value,
+        description: (document.getElementById('description') as HTMLTextAreaElement).value,
+        priority: (document.getElementById('priority') as HTMLSelectElement).value,
+        due_date: (document.getElementById('due_date') as HTMLInputElement).value || null,
+        related_category_id: categorySelect.value,
+        applies_to_all: appliesToAll.checked,
+        specific_entry_ids: appliesToAll.checked ? [] : selectedEntries,
+        parent_task_id: (document.getElementById('parent_task_id') as HTMLInputElement)?.value || null,
+        tags: JSON.parse(tagsHidden.value)
+      };
+
+      try {
+        const response = await fetch('/api/tasks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+
+        if (response.ok) {
+          window.location.href = '/tasks';
+        } else {
+          const error = await response.json();
+          alert('Error: ' + error.error);
+        }
+      } catch (error) {
+        alert('Error al crear la tarea');
+      }
+    });
+  </script>
+</body>
+</html>

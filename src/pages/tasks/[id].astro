@@ -1,0 +1,245 @@
+---
+// src/pages/tasks/[id].astro
+import { db } from '../../lib/db';
+
+const { id } = Astro.params;
+
+const task = db.prepare('SELECT * FROM entries WHERE id = ?').get(id);
+
+if (!task) {
+  return Astro.redirect('/tasks');
+}
+
+const taskData = JSON.parse((task as any).data);
+
+// Obtener categoría relacionada si existe
+let relatedCategory = null;
+if (taskData.related_category_id) {
+  relatedCategory = db.prepare('SELECT * FROM categories WHERE id = ?').get(taskData.related_category_id);
+}
+
+// Obtener subtareas
+const taskCategory = db.prepare('SELECT id FROM categories WHERE slug = ?').get('task') as any;
+const subtasks = taskCategory ? db.prepare(`
+  SELECT * FROM entries 
+  WHERE category_id = ? AND json_extract(data, '$.parent_task_id') = ?
+  ORDER BY json_extract(data, '$.order_index') ASC, created_at ASC
+`).all(taskCategory.id, id) : [];
+
+// Obtener tarea padre si existe
+let parentTask = null;
+if (taskData.parent_task_id) {
+  parentTask = db.prepare('SELECT * FROM entries WHERE id = ?').get(taskData.parent_task_id) as any;
+  if (parentTask) {
+    parentTask.data = JSON.parse(parentTask.data);
+  }
+}
+---
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{taskData.title} - Tarea</title>
+</head>
+<body class="bg-gray-50 min-h-screen">
+  <header class="bg-white shadow-sm border-b border-gray-200">
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+      <a href="/tasks" class="text-sm text-gray-500 hover:text-gray-700">← Volver a tareas</a>
+      <h1 class="text-2xl font-bold text-gray-900 mt-1">{taskData.title}</h1>
+    </div>
+  </header>
+
+  <main class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="bg-white rounded-lg shadow border border-gray-200 p-8">
+      {parentTask && (
+        <div class="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <p class="text-sm text-blue-900">
+            <strong>Subtarea de:</strong> 
+            <a href={`/tasks/${parentTask.id}`} class="underline hover:text-blue-700">
+              {parentTask.data.title}
+            </a>
+          </p>
+        </div>
+      )}
+
+      <div class="space-y-6">
+        <!-- Estado -->
+        <div class="flex items-center gap-4">
+          <label class="flex items-center gap-2">
+            <input 
+              type="checkbox" 
+              id="completedCheckbox"
+              checked={taskData.is_completed}
+              class="w-5 h-5 rounded"
+            />
+            <span class="font-medium">Tarea completada</span>
+          </label>
+          
+          <span class={`px-3 py-1 rounded text-sm font-medium ${
+            taskData.priority === 'critical' ? 'bg-red-100 text-red-700' :
+            taskData.priority === 'high' ? 'bg-orange-100 text-orange-700' :
+            taskData.priority === 'medium' ? 'bg-blue-100 text-blue-700' :
+            'bg-gray-100 text-gray-600'
+          }`}>
+            Prioridad: {taskData.priority === 'critical' ? '🔥 Crítica' :
+                       taskData.priority === 'high' ? '⬆️ Alta' :
+                       taskData.priority === 'medium' ? '➡️ Media' :
+                       '⬇️ Baja'}
+          </span>
+        </div>
+
+        <!-- Descripción -->
+        {taskData.description && (
+          <div>
+            <h3 class="font-semibold text-gray-900 mb-2">Descripción</h3>
+            <div class="prose max-w-none">
+              {taskData.description}
+            </div>
+          </div>
+        )}
+
+        <!-- Categoría relacionada -->
+        {relatedCategory && (
+          <div>
+            <h3 class="font-semibold text-gray-900 mb-2">Categoría Relacionada</h3>
+            <a 
+              href={`/categories/${(relatedCategory as any).slug}`}
+              class="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 rounded-lg hover:bg-gray-200"
+            >
+              <div class="w-6 h-6 rounded" style={`background-color: ${(relatedCategory as any).color}`}></div>
+              {(relatedCategory as any).name}
+            </a>
+            <p class="text-sm text-gray-500 mt-2">
+              {taskData.applies_to_all ? 
+                '✨ Aplica a todas las entradas de esta categoría' :
+                `🎯 Aplica a ${taskData.specific_entry_ids?.length || 0} entradas específicas`
+              }
+            </p>
+          </div>
+        )}
+
+        <!-- Metadata -->
+        <div class="grid grid-cols-2 gap-4 pt-4 border-t">
+          {taskData.due_date && (
+            <div>
+              <h4 class="text-sm font-medium text-gray-500">Fecha Límite</h4>
+              <p class="text-gray-900">{new Date(taskData.due_date).toLocaleDateString('es-ES')}</p>
+            </div>
+          )}
+          
+          <div>
+            <h4 class="text-sm font-medium text-gray-500">Creada</h4>
+            <p class="text-gray-900">{new Date((task as any).created_at).toLocaleDateString('es-ES')}</p>
+          </div>
+        </div>
+
+        <!-- Etiquetas -->
+        {taskData.tags && taskData.tags.length > 0 && (
+          <div>
+            <h3 class="font-semibold text-gray-900 mb-2">Etiquetas</h3>
+            <div class="flex flex-wrap gap-2">
+              {taskData.tags.map((tag: string) => (
+                <span class="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm">
+                  #{tag}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <!-- Subtareas -->
+        {subtasks.length > 0 && (
+          <div class="pt-4 border-t">
+            <h3 class="font-semibold text-gray-900 mb-3">Subtareas ({subtasks.length})</h3>
+            <div class="space-y-2">
+              {subtasks.map((subtask: any) => {
+                const subData = JSON.parse(subtask.data);
+                return (
+                  <a 
+                    href={`/tasks/${subtask.id}`}
+                    class="block p-3 border border-gray-200 rounded-lg hover:border-indigo-300 hover:bg-gray-50"
+                  >
+                    <div class="flex items-center gap-3">
+                      <input 
+                        type="checkbox" 
+                        checked={subData.is_completed}
+                        class="w-4 h-4 rounded pointer-events-none"
+                      />
+                      <span class={subData.is_completed ? 'line-through text-gray-500' : ''}>
+                        {subData.title}
+                      </span>
+                    </div>
+                  </a>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        <!-- Acciones -->
+        <div class="flex gap-3 pt-6 border-t">
+          <a 
+            href={`/tasks/create?parent_id=${id}&category_id=${taskData.related_category_id || ''}`}
+            class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
+          >
+            + Añadir Subtarea
+          </a>
+          <button 
+            id="deleteBtn"
+            class="px-4 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"
+          >
+            Eliminar Tarea
+          </button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const taskId = window.location.pathname.split('/').pop();
+    
+    // Marcar como completada
+    document.getElementById('completedCheckbox')?.addEventListener('change', async (e) => {
+      const checked = (e.target as HTMLInputElement).checked;
+      
+      try {
+        const response = await fetch('/api/tasks', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: taskId,
+            is_completed: checked
+          })
+        });
+        
+        if (response.ok) {
+          window.location.reload();
+        }
+      } catch (error) {
+        alert('Error al actualizar');
+      }
+    });
+
+    // Eliminar tarea
+    document.getElementById('deleteBtn')?.addEventListener('click', async () => {
+      if (!confirm('¿Eliminar esta tarea y todas sus subtareas?')) return;
+      
+      try {
+        const response = await fetch('/api/tasks', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: taskId })
+        });
+        
+        if (response.ok) {
+          window.location.href = '/tasks';
+        }
+      } catch (error) {
+        alert('Error al eliminar');
+      }
+    });
+  </script>
+</body>
+</html>

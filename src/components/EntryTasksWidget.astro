@@ -1,0 +1,236 @@
+---
+// src/components/EntryTasksWidget.astro
+import { db } from '../lib/db';
+
+interface Props {
+  entryId: string;
+  categoryId: string;
+}
+
+const { entryId, categoryId } = Astro.props;
+
+// Obtener tareas aplicables a esta entrada
+const taskCategory = db.prepare('SELECT id FROM categories WHERE slug = ?').get('task') as any;
+let applicableTasks: any[] = [];
+
+if (taskCategory) {
+  const allTasks = db.prepare(`
+    SELECT * FROM entries 
+    WHERE category_id = ? 
+      AND json_extract(data, '$.related_category_id') = ?
+      AND (json_extract(data, '$.parent_task_id') IS NULL OR json_extract(data, '$.parent_task_id') = '')
+    ORDER BY json_extract(data, '$.order_index') ASC
+  `).all(taskCategory.id, categoryId) as any[];
+  
+  applicableTasks = allTasks.map(task => {
+    const data = JSON.parse(task.data);
+    
+    // Verificar si aplica a esta entrada
+    const applies = data.applies_to_all || 
+                   (data.specific_entry_ids && data.specific_entry_ids.includes(entryId));
+    
+    if (!applies) return null;
+    
+    // Obtener estado de completitud
+    const completion = db.prepare(`
+      SELECT * FROM task_completion 
+      WHERE task_id = ? AND entry_id = ?
+    `).get(task.id, entryId) as any;
+    
+    return {
+      ...task,
+      data,
+      is_completed: completion ? completion.is_completed === 1 : false
+    };
+  }).filter(Boolean);
+}
+---
+
+<div class="bg-white rounded-lg shadow border border-gray-200 p-6">
+  <div class="flex items-center justify-between mb-4">
+    <h2 class="text-lg font-semibold text-gray-900">Tareas</h2>
+    <div class="flex gap-2">
+      <button 
+        id="linkExistingTaskBtn"
+        class="px-3 py-1 bg-gray-100 text-gray-700 text-sm rounded hover:bg-gray-200"
+      >
+        🔗 Vincular existente
+      </button>
+      <a 
+        href={`/tasks/create?entry_id=${entryId}&category_id=${categoryId}`}
+        class="px-3 py-1 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700"
+      >
+        + Nueva
+      </a>
+    </div>
+  </div>
+
+  {applicableTasks.length === 0 ? (
+    <p class="text-sm text-gray-500 text-center py-8">
+      No hay tareas asignadas a esta entrada
+    </p>
+  ) : (
+    <div class="space-y-2">
+      {applicableTasks.map((task: any) => (
+        <div class="flex items-start gap-3 p-3 border border-gray-200 rounded-lg hover:border-indigo-300">
+          <input 
+            type="checkbox" 
+            class="entry-task-checkbox mt-1 w-5 h-5 rounded"
+            data-task-id={task.id}
+            data-entry-id={entryId}
+            checked={task.is_completed}
+          />
+          <div class="flex-1">
+            <a 
+              href={`/tasks/${task.id}`}
+              class={`font-medium hover:text-indigo-600 ${task.is_completed ? 'line-through text-gray-500' : 'text-gray-900'}`}
+            >
+              {task.data.title}
+            </a>
+            {task.data.description && (
+              <p class="text-sm text-gray-500 mt-1 line-clamp-2">
+                {task.data.description.substring(0, 100)}
+              </p>
+            )}
+            <div class="flex items-center gap-2 mt-2 text-xs text-gray-500">
+              <span class={`px-2 py-0.5 rounded font-medium ${
+                task.data.priority === 'critical' ? 'bg-red-100 text-red-700' :
+                task.data.priority === 'high' ? 'bg-orange-100 text-orange-700' :
+                task.data.priority === 'medium' ? 'bg-blue-100 text-blue-700' :
+                'bg-gray-100 text-gray-600'
+              }`}>
+                {task.data.priority}
+              </span>
+              {task.data.due_date && (
+                <span>📅 {new Date(task.data.due_date).toLocaleDateString('es-ES')}</span>
+              )}
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  )}
+</div>
+
+<!-- Modal vincular tarea existente -->
+<div id="linkTaskModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+  <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
+    <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+      <h3 class="text-lg font-semibold text-gray-900">Vincular Tarea Existente</h3>
+      <button id="closeLinkModal" class="text-gray-400 hover:text-gray-600">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
+    <div class="p-6">
+      <div id="availableTasksList" class="space-y-2">
+        <!-- Se cargará dinámicamente -->
+      </div>
+    </div>
+  </div>
+</div>
+
+<script define:vars={{ entryId, categoryId }}>
+  // Checkboxes de tareas
+  document.querySelectorAll('.entry-task-checkbox').forEach(checkbox => {
+    checkbox.addEventListener('change', async (e) => {
+      const target = e.target as HTMLInputElement;
+      const taskId = target.dataset.taskId;
+      const isCompleted = target.checked;
+      
+      try {
+        const response = await fetch('/api/task-completion', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            task_id: taskId,
+            entry_id: entryId,
+            is_completed: isCompleted
+          })
+        });
+        
+        if (!response.ok) {
+          target.checked = !isCompleted;
+          alert('Error al actualizar');
+        } else {
+          // Recargar para actualizar indicadores
+          window.location.reload();
+        }
+      } catch (error) {
+        target.checked = !isCompleted;
+        alert('Error de red');
+      }
+    });
+  });
+
+  // Modal vincular tarea
+  const modal = document.getElementById('linkTaskModal');
+  const linkBtn = document.getElementById('linkExistingTaskBtn');
+  const closeBtn = document.getElementById('closeLinkModal');
+
+  linkBtn?.addEventListener('click', async () => {
+    modal?.classList.remove('hidden');
+    await loadAvailableTasks();
+  });
+
+  closeBtn?.addEventListener('click', () => {
+    modal?.classList.add('hidden');
+  });
+
+  async function loadAvailableTasks() {
+    try {
+      const response = await fetch(`/api/tasks?category_id=${categoryId}`);
+      const tasks = await response.json();
+      
+      const container = document.getElementById('availableTasksList');
+      if (!container) return;
+      
+      container.innerHTML = tasks.map((task: any) => `
+        <div class="flex items-center gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50">
+          <input 
+            type="checkbox" 
+            class="link-task-checkbox w-5 h-5 rounded"
+            data-task-id="${task.id}"
+            ${task.data.applies_to_all || (task.data.specific_entry_ids && task.data.specific_entry_ids.includes(entryId)) ? 'checked disabled' : ''}
+          />
+          <div class="flex-1">
+            <p class="font-medium text-gray-900">${task.data.title}</p>
+            <p class="text-xs text-gray-500">${task.data.priority} • ${task.data.applies_to_all ? 'Todas las entradas' : 'Específicas'}</p>
+          </div>
+        </div>
+      `).join('');
+      
+      // Event listeners
+      container.querySelectorAll('.link-task-checkbox').forEach(cb => {
+        cb.addEventListener('change', async (e) => {
+          const checkbox = e.target as HTMLInputElement;
+          const taskId = checkbox.dataset.taskId;
+          
+          try {
+            const response = await fetch(`/api/tasks`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                id: taskId,
+                specific_entry_ids: checkbox.checked ? 
+                  [...(task.data.specific_entry_ids || []), entryId] :
+                  (task.data.specific_entry_ids || []).filter((id: string) => id !== entryId)
+              })
+            });
+            
+            if (response.ok) {
+              setTimeout(() => window.location.reload(), 500);
+            }
+          } catch (error) {
+            checkbox.checked = !checkbox.checked;
+            alert('Error');
+          }
+        });
+      });
+      
+    } catch (error) {
+      console.error('Error loading tasks:', error);
+    }
+  }
+</script>

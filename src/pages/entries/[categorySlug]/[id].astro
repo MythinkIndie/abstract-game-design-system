@@ -1,0 +1,444 @@
+---
+// src/pages/entries/[categorySlug]/[id].astro
+import { db } from '../../../lib/db';
+import EntryTasksWidget from '../../../components/EntryTasksWidget.astro';
+import FieldRenderer from '../../../components/FieldRenderer.astro';
+
+const { categorySlug, id } = Astro.params;
+
+const category = db.prepare('SELECT * FROM categories WHERE slug = ?').get(categorySlug);
+if (!category) return Astro.redirect('/categories');
+
+const entry = db.prepare('SELECT * FROM entries WHERE id = ?').get(id);
+if (!entry) return Astro.redirect(`/entries/${categorySlug}`);
+
+const fields = db.prepare('SELECT * FROM fields WHERE category_id = ? ORDER BY field_order').all((category as any).id);
+
+let entryData: any = {};
+try {
+  entryData = JSON.parse((entry as any).data);
+} catch {}
+
+// Obtener estado de completitud de campos
+const completionStates = db.prepare(`
+  SELECT field_id, is_complete, completion_notes 
+  FROM field_completion 
+  WHERE entry_id = ?
+`).all(id);
+
+const completionMap = new Map(
+  (completionStates as any[]).map(c => [c.field_id, {
+    is_complete: c.is_complete === 1,
+    completion_notes: c.completion_notes
+  }])
+);
+
+const fieldsWithCompletion = (fields as any[]).map(field => {
+  const hasValue = entryData[field.name] !== undefined && entryData[field.name] !== null && entryData[field.name] !== '';
+  const manualCompletion = completionMap.get(field.id);
+  
+  return {
+    ...field,
+    has_value: hasValue,
+    is_complete: manualCompletion?.is_complete ?? hasValue,
+    completion_notes: manualCompletion?.completion_notes
+  };
+});
+
+const totalFields = fieldsWithCompletion.length;
+const completedFields = fieldsWithCompletion.filter(f => f.is_complete).length;
+const progress = totalFields > 0 ? Math.round((completedFields / totalFields) * 100) : 0;
+---
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{(entry as any).title} - {(category as any).name}</title>
+  <style>
+    .editable-field {
+      cursor: text;
+      transition: all 0.2s;
+      min-height: 2rem;
+    }
+    .editable-field:hover {
+      background-color: #f9fafb;
+      border-color: #d1d5db;
+    }
+    .editable-field:focus {
+      outline: none;
+      border-color: #6366f1;
+      background-color: white;
+    }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen" data-entry-id={id}>
+  <header class="bg-white shadow-sm border-b border-gray-200">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+      <a href={`/entries/${categorySlug}`} class="text-sm text-gray-500 hover:text-gray-700">
+        ← Volver a {(category as any).name}
+      </a>
+      <div class="flex items-center justify-between mt-2">
+        <div class="flex items-center gap-4 flex-1 min-w-0">
+          <!-- Imagen de entrada -->
+          <div class="relative group flex-shrink-0">
+            <img 
+              id="entryImage"
+              src={entryData._image || '/placeholder-image.png'}
+              alt={(entry as any).title}
+              class="w-24 h-24 rounded-lg object-cover border-2 border-gray-200"
+              onerror="this.src='/placeholder-image.png'"
+            />
+            <label class="absolute inset-0 flex items-center justify-center bg-black bg-opacity-0 group-hover:bg-opacity-50 rounded-lg cursor-pointer transition">
+              <svg class="w-6 h-6 text-white opacity-0 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              <input 
+                type="file" 
+                id="imageUpload"
+                accept="image/*"
+                class="hidden"
+              />
+            </label>
+          </div>
+          
+          <div class="flex-1 min-w-0">
+            <!-- Título editable -->
+            <h1 
+              id="entryTitle"
+              contenteditable="true"
+              class="text-2xl font-bold text-gray-900 border border-transparent rounded px-2 py-1 editable-field"
+              data-field="title"
+            >{(entry as any).title}</h1>
+            <p class="text-sm text-gray-500 mt-1">{(category as any).name}</p>
+          </div>
+        </div>
+        
+        <div class="flex gap-3">
+          <button 
+            id="saveBtn"
+            class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 hidden"
+          >
+            💾 Guardar Cambios
+          </button>
+          <button 
+            id="deleteBtn"
+            class="px-4 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"
+          >
+            Eliminar
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <!-- Contenido Principal -->
+      <div class="lg:col-span-2 space-y-6">
+        <!-- Barra de Progreso -->
+        <div class="bg-white rounded-lg shadow border border-gray-200 p-6">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="text-lg font-semibold text-gray-900">Progreso de Completitud</h2>
+            <span class="text-2xl font-bold text-indigo-600">{progress}%</span>
+          </div>
+          <div class="w-full bg-gray-200 rounded-full h-3 mb-2">
+            <div 
+              class="bg-indigo-600 h-3 rounded-full transition-all" 
+              style={`width: ${progress}%`}
+            ></div>
+          </div>
+          <p class="text-sm text-gray-500">
+            {completedFields} de {totalFields} campos completados
+          </p>
+        </div>
+
+        <!-- Campos Editables -->
+        <div class="bg-white rounded-lg shadow border border-gray-200">
+          <div class="px-6 py-4 border-b border-gray-200">
+            <h2 class="text-lg font-semibold text-gray-900">Datos</h2>
+            <p class="text-xs text-gray-500 mt-1">Click en cualquier campo para editarlo directamente</p>
+          </div>
+          <div class="p-6 space-y-4">
+            {fieldsWithCompletion.map((field: any) => {
+              const value = entryData[field.name];
+              const isEmpty = value === undefined || value === null || value === '';
+              
+              return (
+                <div class="border border-gray-200 rounded-lg p-4">
+                  <div class="flex items-start justify-between mb-2">
+                    <div class="flex items-center gap-2 flex-1">
+                      <input 
+                        type="checkbox" 
+                        class="field-completion-checkbox w-5 h-5 text-indigo-600 rounded"
+                        data-field-id={field.id}
+                        data-entry-id={id}
+                        checked={field.is_complete}
+                      />
+                      <div>
+                        <h3 class="font-semibold text-gray-900">{field.label}</h3>
+                        <p class="text-xs text-gray-500">{field.name} • {field.type}</p>
+                      </div>
+                    </div>
+                    <span class={`px-2 py-0.5 rounded text-xs font-medium ${
+                      field.is_complete ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
+                    }`}>
+                      {field.is_complete ? 'Completo' : 'Pendiente'}
+                    </span>
+                  </div>
+                  
+                  {field.help_text && (
+                    <p class="text-xs text-gray-500 mb-2 ml-7">{field.help_text}</p>
+                  )}
+                  
+                  <div class="ml-7 mt-2">
+                    
+                    <FieldRenderer field={field} value={entryData[field.name]}/>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      <!-- Sidebar -->
+      <div class="space-y-6">
+        <!-- Tareas -->
+        <EntryTasksWidget entryId={id} categoryId={(category as any).id} />
+
+        <!-- Información -->
+        <div class="bg-white rounded-lg shadow border border-gray-200 p-6">
+          <h2 class="text-lg font-semibold text-gray-900 mb-4">Información</h2>
+          <dl class="space-y-3">
+            <div>
+              <dt class="text-xs font-medium text-gray-500">ID</dt>
+              <dd class="text-sm text-gray-900 font-mono">{id}</dd>
+            </div>
+            <div>
+              <dt class="text-xs font-medium text-gray-500">Creado</dt>
+              <dd class="text-sm text-gray-900">
+                {new Date((entry as any).created_at).toLocaleDateString('es-ES')}
+              </dd>
+            </div>
+            <div>
+              <dt class="text-xs font-medium text-gray-500">Última Actualización</dt>
+              <dd class="text-sm text-gray-900">
+                {new Date((entry as any).updated_at).toLocaleDateString('es-ES')}
+              </dd>
+            </div>
+          </dl>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const entryId = document.body.dataset.entryId!;
+    let hasChanges = false;
+    let currentData: any = {};
+
+    // Cargar datos actuales
+    async function loadCurrentData() {
+      try {
+        const response = await fetch(`/api/entries?id=${entryId}`);
+        const entry = await response.json();
+        currentData = JSON.parse(entry.data);
+      } catch (error) {
+        console.error('Error loading data:', error);
+      }
+    }
+
+    loadCurrentData();
+
+    // Detectar cambios
+    document.querySelectorAll('.editable-field').forEach(field => {
+      field.addEventListener('input', () => {
+        hasChanges = true;
+        document.getElementById('saveBtn')?.classList.remove('hidden');
+      });
+
+      field.addEventListener('change', () => {
+        hasChanges = true;
+        document.getElementById('saveBtn')?.classList.remove('hidden');
+      });
+    });
+
+    // Listas dinámicas
+    document.querySelectorAll('.add-list-item').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const fieldName = (btn as HTMLElement).dataset.field!;
+        const input = document.querySelector(`[data-list-input="${fieldName}"]`) as HTMLInputElement;
+        
+        if (input && input.value.trim()) {
+          if (!currentData[fieldName]) currentData[fieldName] = [];
+          currentData[fieldName].push(input.value.trim());
+          input.value = '';
+          hasChanges = true;
+          document.getElementById('saveBtn')?.classList.remove('hidden');
+          
+          // TODO: Recargar vista de lista
+          window.location.reload();
+        }
+      });
+    });
+
+    document.querySelectorAll('.remove-list-item').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const fieldName = (btn as HTMLElement).dataset.field!;
+        const item = (btn as HTMLElement).dataset.item!;
+        
+        if (currentData[fieldName]) {
+          currentData[fieldName] = currentData[fieldName].filter((i: string) => i !== item);
+          hasChanges = true;
+          document.getElementById('saveBtn')?.classList.remove('hidden');
+          window.location.reload();
+        }
+      });
+    });
+
+    // Guardar cambios
+    document.getElementById('saveBtn')?.addEventListener('click', async () => {
+      const updatedData: any = { ...currentData };
+      
+      // Recopilar valores de campos editables
+      document.querySelectorAll('.editable-field').forEach(field => {
+        const fieldName = (field as HTMLElement).dataset.field;
+        const fieldType = (field as HTMLElement).dataset.type;
+        
+        if (!fieldName) return;
+        
+        if (fieldType === 'boolean') {
+          updatedData[fieldName] = (field as HTMLInputElement).checked;
+        } else if (fieldType === 'number') {
+          const val = (field as HTMLInputElement).value;
+          updatedData[fieldName] = val ? parseFloat(val) : null;
+        } else if (fieldType === 'json') {
+          try {
+            updatedData[fieldName] = JSON.parse((field as HTMLTextAreaElement).value || '{}');
+          } catch {
+            alert(`Error en JSON del campo ${fieldName}`);
+            return;
+          }
+        } else if (field.tagName === 'INPUT') {
+          updatedData[fieldName] = (field as HTMLInputElement).value;
+        } else if (field.tagName === 'TEXTAREA') {
+          updatedData[fieldName] = (field as HTMLTextAreaElement).value;
+        } else if (field.tagName === 'SELECT') {
+          updatedData[fieldName] = (field as HTMLSelectElement).value;
+        } else if (field.getAttribute('contenteditable')) {
+          updatedData[fieldName] = field.textContent?.trim() || '';
+        }
+      });
+      
+      try {
+        const response = await fetch('/api/entries', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: entryId,
+            data: updatedData
+          })
+        });
+        
+        if (response.ok) {
+          hasChanges = false;
+          document.getElementById('saveBtn')?.classList.add('hidden');
+          alert('✅ Cambios guardados');
+          window.location.reload();
+        } else {
+          alert('Error al guardar');
+        }
+      } catch (error) {
+        alert('Error de red');
+      }
+    });
+
+    // Upload imagen
+    document.getElementById('imageUpload')?.addEventListener('change', async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        const base64 = event.target?.result as string;
+        
+        // Guardar en data._image
+        currentData._image = base64;
+        
+        try {
+          await fetch('/api/entries', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              id: entryId,
+              data: currentData
+            })
+          });
+          
+          window.location.reload();
+        } catch (error) {
+          alert('Error al guardar imagen');
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+
+    // Checkboxes completitud
+    document.querySelectorAll('.field-completion-checkbox').forEach(checkbox => {
+      checkbox.addEventListener('change', async (e) => {
+        const target = e.target as HTMLInputElement;
+        const fieldId = target.dataset.fieldId;
+        const isComplete = target.checked;
+        
+        try {
+          const response = await fetch('/api/field-completion', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              entry_id: entryId,
+              field_id: fieldId,
+              is_complete: isComplete
+            })
+          });
+          
+          if (response.ok) {
+            window.location.reload();
+          }
+        } catch (error) {
+          target.checked = !isComplete;
+        }
+      });
+    });
+
+    // Eliminar entrada
+    document.getElementById('deleteBtn')?.addEventListener('click', async () => {
+      if (!confirm('¿Eliminar esta entrada?')) return;
+      
+      try {
+        const response = await fetch('/api/entries', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: entryId })
+        });
+        
+        if (response.ok) {
+          window.location.href = `/entries/${window.location.pathname.split('/')[2]}`;
+        }
+      } catch (error) {
+        alert('Error al eliminar');
+      }
+    });
+
+    // Advertencia al salir sin guardar
+    window.addEventListener('beforeunload', (e) => {
+      if (hasChanges) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    });
+  </script>
+</body>
+</html>

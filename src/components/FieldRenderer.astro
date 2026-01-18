@@ -1,0 +1,109 @@
+---
+const { field, value } = Astro.props;
+const isEmpty = value === undefined || value === null || value === '';
+const config = field.config ? JSON.parse(field.config) : {};
+---
+
+{field.type === 'text' && (
+  <input
+    type="text"
+    class="editable-field w-full px-3 py-2 border border-gray-300 rounded-lg"
+    value={value || ''}
+    placeholder={isEmpty ? '⚠️ Campo vacío - Click para editar' : ''}
+  />
+)}
+
+{field.type === 'number' && (
+  <input 
+    type="number"
+    class="editable-field w-full px-3 py-2 border border-gray-300 rounded-lg"
+    data-field={field.name}
+    data-type="number"
+    value={value || ''}
+    />
+)}
+
+{field.type === 'enum' && (
+  <select class="editable-field w-full px-3 py-2 border border-gray-300 rounded-lg">
+    {config.options?.map((opt: any) => (
+      <option value={opt}>{opt}</option>
+    ))}
+  </select>
+)}
+
+{field.type === 'boolean' && (
+    <label class="flex items-center gap-2">
+        <input 
+        type="checkbox"
+        class="editable-field w-4 h-4 text-indigo-600 border-gray-300 rounded"
+        data-field={field.name}
+        data-type="boolean"
+        checked={value === true}
+        />
+        <span class="text-sm text-gray-600">
+            {field.help_text || 'Marcar si aplica'}
+        </span>
+    </label>
+)}
+{field.type === 'markdown' && (
+    <textarea 
+    class="editable-field w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-sm"
+    data-field={field.name}
+    data-type="markdown"
+    rows="6"
+    placeholder={isEmpty ? '⚠️ Campo vacío - Click para editar' : 'Soporta Markdown'}
+    >
+        {value || ''}
+    </textarea>
+)}
+{field.type === 'enum' && (
+    <select class="editable-field w-full px-3 py-2 border border-gray-300 rounded-lg" data-field={field.name} data-type="enum"> 
+        <option value="">
+            Selecciona...
+        </option> 
+        {JSON.parse(field.config || '{}').options?.map((opt: string) => ( <option value={opt} selected={opt === value}>{opt}</option> ))} 
+    </select>
+)}
+{field.type === 'list' && (
+    <div>
+        <div class="flex flex-wrap gap-2 mb-2">
+            {value.map((item: any) => (
+            <span class="px-2 py-1 bg-gray-100 text-gray-700 text-sm rounded flex items-center gap-1">
+                {item}
+                <button
+                class="remove-list-item text-red-600 hover:text-red-800"
+                data-field={field.name}
+                data-item={item}
+                >
+                ×
+                </button>
+            </span>
+            ))}
+        </div>
+
+        <div class="flex gap-2">
+            <input
+            type="text"
+            class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm"
+            placeholder="Añadir elemento..."
+            data-list-input={field.name}
+            />
+            <button
+            class="add-list-item px-3 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm"
+            data-field={field.name}
+            >
+            +
+            </button>
+        </div>
+    </div>
+)}
+{field.type === 'json' && (
+    <textarea 
+        class="editable-field w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-sm"
+        data-field={field.name}
+        data-type="json"
+        rows="6"
+        placeholder='{"key": "value"}'>
+        {JSON.stringify(value, null, 2)}
+    </textarea>
+)}

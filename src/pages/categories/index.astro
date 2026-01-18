@@ -1,0 +1,157 @@
+---
+// src/pages/categories/index.astro
+import { db } from '../../lib/db';
+
+const categories = db.prepare('SELECT * FROM categories ORDER BY is_system DESC, created_at').all();
+
+// Contar entradas por categoría
+const entryCounts = db.prepare(`
+  SELECT category_id, COUNT(*) as count 
+  FROM entries 
+  GROUP BY category_id
+`).all() as any[];
+
+const countMap = new Map(entryCounts.map((item: any) => [item.category_id, item.count]));
+---
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Categorías - Sistema de Diseño</title>
+</head>
+<body class="bg-gray-50 min-h-screen">
+  <header class="bg-white shadow-sm border-b border-gray-200">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+      <div class="flex items-center justify-between">
+        <div>
+          <a href="/" class="text-sm text-gray-500 hover:text-gray-700">← Volver al inicio</a>
+          <h1 class="text-2xl font-bold text-gray-900 mt-1">Categorías</h1>
+        </div>
+        <a href="/categories/create" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition">
+          + Nueva Categoría
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <!-- Categorías del Sistema -->
+    <div class="mb-8">
+      <h2 class="text-lg font-semibold text-gray-900 mb-4">Categorías del Sistema</h2>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {categories.filter((cat: any) => cat.is_system === 1).map((cat: any) => (
+          <a 
+            href={`/categories/${cat.slug}`}
+            class="block bg-white rounded-lg shadow border-2 border-gray-200 hover:border-indigo-300 transition p-6"
+          >
+            <div class="flex items-start justify-between mb-3">
+              <div class="w-12 h-12 rounded-lg flex items-center justify-center text-white font-bold text-lg" style={`background-color: ${cat.color}`}>
+                {cat.name.substring(0, 1)}
+              </div>
+              <span class="px-2 py-1 bg-gray-100 text-gray-600 text-xs font-medium rounded">
+                Sistema
+              </span>
+            </div>
+            <h3 class="text-lg font-semibold text-gray-900 mb-1">{cat.name}</h3>
+            <p class="text-sm text-gray-500 mb-3">{cat.description}</p>
+            <div class="flex items-center gap-2 text-xs text-gray-400">
+              <span>{countMap.get(cat.id) || 0} entradas</span>
+            </div>
+          </a>
+        ))}
+      </div>
+    </div>
+
+    <!-- Categorías Custom -->
+    <div>
+      <h2 class="text-lg font-semibold text-gray-900 mb-4">Categorías Personalizadas</h2>
+      
+      {categories.filter((cat: any) => cat.is_system === 0).length === 0 ? (
+        <div class="bg-white rounded-lg shadow border border-gray-200 p-12 text-center">
+          <div class="max-w-md mx-auto">
+            <svg class="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+            </svg>
+            <h3 class="text-lg font-semibold text-gray-900 mb-2">No hay categorías personalizadas</h3>
+            <p class="text-gray-500 mb-6">Crea tu primera categoría para empezar a diseñar tu videojuego</p>
+            <a href="/categories/create" class="inline-block px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition font-medium">
+              Crear Primera Categoría
+            </a>
+          </div>
+        </div>
+      ) : (
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {categories.filter((cat: any) => cat.is_system === 0).map((cat: any) => (
+            <div class="bg-white rounded-lg shadow border border-gray-200 hover:border-indigo-300 transition">
+              <a href={`/categories/${cat.slug}`} class="block p-6">
+                <div class="flex items-start justify-between mb-3">
+                  <div class="w-12 h-12 rounded-lg flex items-center justify-center text-white font-bold text-lg" style={`background-color: ${cat.color}`}>
+                    {cat.name.substring(0, 2).toUpperCase()}
+                  </div>
+                  <button 
+                    class="delete-category text-gray-400 hover:text-red-600 transition"
+                    data-id={cat.id}
+                    data-name={cat.name}
+                    onclick="event.preventDefault(); event.stopPropagation();"
+                  >
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                </div>
+                <h3 class="text-lg font-semibold text-gray-900 mb-1">{cat.name}</h3>
+                <p class="text-sm text-gray-500 mb-3 line-clamp-2">{cat.description || 'Sin descripción'}</p>
+                <div class="flex items-center justify-between text-xs text-gray-400">
+                  <span>{countMap.get(cat.id) || 0} entradas</span>
+                  <span>/{cat.slug}</span>
+                </div>
+              </a>
+              <div class="border-t border-gray-200 px-6 py-3 bg-gray-50 flex gap-2">
+                <a href={`/entries/${cat.slug}`} class="flex-1 text-center px-3 py-2 bg-white border border-gray-300 rounded text-sm font-medium text-gray-700 hover:bg-gray-50 transition">
+                  Ver Entradas
+                </a>
+                <a href={`/categories/${cat.slug}`} class="flex-1 text-center px-3 py-2 bg-indigo-600 text-white rounded text-sm font-medium hover:bg-indigo-700 transition">
+                  Configurar
+                </a>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  </main>
+
+  <script>
+    document.querySelectorAll('.delete-category').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const target = e.currentTarget as HTMLElement;
+        const id = target.dataset.id;
+        const name = target.dataset.name;
+        
+        if (!confirm(`¿Estás seguro de eliminar la categoría "${name}"?\nEsto eliminará todas sus entradas y campos.`)) {
+          return;
+        }
+        
+        try {
+          const response = await fetch('/api/categories', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id })
+          });
+          
+          if (response.ok) {
+            window.location.reload();
+          } else {
+            const data = await response.json();
+            alert(`Error: ${data.error}`);
+          }
+        } catch (error) {
+          alert('Error al eliminar la categoría');
+        }
+      });
+    });
+  </script>
+</body>
+</html>

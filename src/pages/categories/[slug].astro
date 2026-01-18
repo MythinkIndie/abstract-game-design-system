@@ -1,0 +1,354 @@
+---
+// src/pages/categories/[slug].astro
+import { db } from '../../lib/db';
+
+const { slug } = Astro.params;
+
+const category = db.prepare('SELECT * FROM categories WHERE slug = ?').get(slug);
+
+if (!category) {
+  return Astro.redirect('/categories');
+}
+
+const fields = db.prepare('SELECT * FROM fields WHERE category_id = ? ORDER BY field_order, created_at').all((category as any).id);
+
+const entryCount = db.prepare('SELECT COUNT(*) as count FROM entries WHERE category_id = ?').get((category as any).id) as { count: number };
+---
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{(category as any).name} - Configuración</title>
+</head>
+<body class="bg-gray-50 min-h-screen" data-category-id={(category as any).id} data-slug={slug}>
+  <header class="bg-white shadow-sm border-b border-gray-200">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+      <a href="/categories" class="text-sm text-gray-500 hover:text-gray-700">← Volver a categorías</a>
+      <div class="flex items-center justify-between mt-2">
+        <div class="flex items-center gap-4">
+          <div class="w-16 h-16 rounded-lg flex items-center justify-center text-white font-bold text-2xl" style={`background-color: ${(category as any).color}`}>
+            {(category as any).name.substring(0, 2).toUpperCase()}
+          </div>
+          <div>
+            <h1 class="text-2xl font-bold text-gray-900">{(category as any).name}</h1>
+            <p class="text-sm text-gray-500">{(category as any).description || 'Sin descripción'}</p>
+          </div>
+        </div>
+        <div class="flex gap-3">
+          <a href={`/entries/${slug}`} class="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition">
+            Ver Entradas ({entryCount.count})
+          </a>
+          <a href={`/entries/${slug}/create`} class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition">
+            + Nueva Entrada
+          </a>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <!-- Info de la categoría -->
+      <div class="lg:col-span-1 space-y-6">
+        <div class="bg-white rounded-lg shadow border border-gray-200 p-6">
+          <h2 class="text-lg font-semibold text-gray-900 mb-4">Información</h2>
+          <dl class="space-y-3">
+            <div>
+              <dt class="text-xs font-medium text-gray-500">Slug</dt>
+              <dd class="text-sm text-gray-900 font-mono">{(category as any).slug}</dd>
+            </div>
+            <div>
+              <dt class="text-xs font-medium text-gray-500">Color</dt>
+              <dd class="flex items-center gap-2">
+                <div class="w-6 h-6 rounded border border-gray-300" style={`background-color: ${(category as any).color}`}></div>
+                <span class="text-sm text-gray-900 font-mono">{(category as any).color}</span>
+              </dd>
+            </div>
+            <div>
+              <dt class="text-xs font-medium text-gray-500">Tipo</dt>
+              <dd class="text-sm text-gray-900">
+                {(category as any).is_system ? 'Sistema' : 'Personalizada'}
+              </dd>
+            </div>
+            <div>
+              <dt class="text-xs font-medium text-gray-500">Total de Campos</dt>
+              <dd class="text-sm text-gray-900">{fields.length}</dd>
+            </div>
+            <div>
+              <dt class="text-xs font-medium text-gray-500">Total de Entradas</dt>
+              <dd class="text-sm text-gray-900">{entryCount.count}</dd>
+            </div>
+          </dl>
+        </div>
+
+        {!(category as any).is_system && (
+          <div class="bg-white rounded-lg shadow border border-gray-200 p-6">
+            <h2 class="text-lg font-semibold text-gray-900 mb-4">Acciones</h2>
+            <div class="space-y-2">
+              <button 
+                id="exportBtn"
+                class="w-full px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition text-sm font-medium"
+              >
+                Exportar Categoría (JSON)
+              </button>
+              <button 
+                id="deleteBtn"
+                class="w-full px-4 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition text-sm font-medium"
+              >
+                Eliminar Categoría
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <!-- Campos -->
+      <div class="lg:col-span-2">
+        <div class="bg-white rounded-lg shadow border border-gray-200">
+          <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+            <h2 class="text-lg font-semibold text-gray-900">Campos de la Categoría</h2>
+            {!(category as any).is_system && (
+              <button 
+                id="addFieldBtn"
+                class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition text-sm font-medium"
+              >
+                + Añadir Campo
+              </button>
+            )}
+          </div>
+
+          <div class="p-6">
+            {fields.length === 0 ? (
+              <div class="text-center py-12">
+                <svg class="w-12 h-12 text-gray-300 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <p class="text-gray-500 mb-4">No hay campos definidos</p>
+                {!(category as any).is_system && (
+                  <button class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition">
+                    Añadir Primer Campo
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div class="space-y-3">
+                {fields.map((field: any) => (
+                  <div class="border border-gray-200 rounded-lg p-4 hover:border-indigo-300 transition">
+                    <div class="flex items-start justify-between">
+                      <div class="flex-1">
+                        <div class="flex items-center gap-3 mb-2">
+                          <h3 class="font-semibold text-gray-900">{field.label}</h3>
+                          <span class="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs font-medium rounded">
+                            {field.type}
+                          </span>
+                          {field.required === 1 && (
+                            <span class="px-2 py-0.5 bg-red-100 text-red-600 text-xs font-medium rounded">
+                              Requerido
+                            </span>
+                          )}
+                          {field.unique_value === 1 && (
+                            <span class="px-2 py-0.5 bg-blue-100 text-blue-600 text-xs font-medium rounded">
+                              Único
+                            </span>
+                          )}
+                        </div>
+                        <p class="text-xs font-mono text-gray-500 mb-1">Campo: {field.name}</p>
+                        {field.help_text && (
+                          <p class="text-sm text-gray-600">{field.help_text}</p>
+                        )}
+                        {field.config && field.config !== '{}' && (
+                          <details class="mt-2">
+                            <summary class="text-xs text-gray-500 cursor-pointer hover:text-gray-700">
+                              Ver configuración
+                            </summary>
+                            <pre class="text-xs bg-gray-50 p-2 rounded mt-1 overflow-x-auto">{field.config}</pre>
+                          </details>
+                        )}
+                      </div>
+                      {!(category as any).is_system && (
+                        <button 
+                          class="delete-field text-gray-400 hover:text-red-600 transition ml-4"
+                          data-id={field.id}
+                          data-name={field.label}
+                        >
+                          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Modal para añadir campo (simplificado) -->
+  <div id="fieldModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+      <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+        <h3 class="text-lg font-semibold text-gray-900">Añadir Nuevo Campo</h3>
+        <button id="closeModal" class="text-gray-400 hover:text-gray-600">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+      <form id="fieldForm" class="p-6 space-y-4">
+        <div>
+          <label for="fieldName" class="block text-sm font-medium text-gray-700 mb-2">Nombre del Campo (opcional)</label>
+          <input type="text" id="fieldName" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="Se auto-genera desde la etiqueta" />
+          <p class="text-xs text-gray-500 mt-1">Formato: snake_case (ej: health_points)</p>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Etiqueta *</label>
+          <input type="text" id="fieldLabel" required class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="Ej: Puntos de Vida" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Tipo *</label>
+          <select id="fieldType" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+            <option value="text">Texto</option>
+            <option value="number">Número</option>
+            <option value="boolean">Booleano (Sí/No)</option>
+            <option value="markdown">Markdown</option>
+            <option value="enum">Enumeración (opciones)</option>
+            <option value="list">Lista</option>
+            <option value="json">JSON</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Texto de Ayuda</label>
+          <input type="text" id="fieldHelp" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="Descripción del campo" />
+        </div>
+        <div class="flex gap-4">
+          <label class="flex items-center gap-2">
+            <input type="checkbox" id="fieldRequired" class="rounded" />
+            <span class="text-sm text-gray-700">Campo requerido</span>
+          </label>
+          <label class="flex items-center gap-2">
+            <input type="checkbox" id="fieldUnique" class="rounded" />
+            <span class="text-sm text-gray-700">Valor único</span>
+          </label>
+        </div>
+        <div class="flex gap-3 pt-4">
+          <button type="submit" class="flex-1 px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition font-medium">
+            Crear Campo
+          </button>
+          <button type="button" id="cancelField" class="px-6 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition font-medium">
+            Cancelar
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    const categoryId = document.body.dataset.categoryId;
+    const slug = document.body.dataset.slug;
+    
+    const modal = document.getElementById('fieldModal');
+    const addFieldBtn = document.getElementById('addFieldBtn');
+    const closeModal = document.getElementById('closeModal');
+    const cancelField = document.getElementById('cancelField');
+    const fieldForm = document.getElementById('fieldForm');
+
+    addFieldBtn?.addEventListener('click', () => {
+      modal?.classList.remove('hidden');
+    });
+
+    [closeModal, cancelField].forEach(btn => {
+      btn?.addEventListener('click', () => {
+        modal?.classList.add('hidden');
+      });
+    });
+
+    fieldForm?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      // Generar nombre automático si está vacío
+      const labelValue = (document.getElementById('fieldLabel') as HTMLInputElement).value;
+      let nameValue = (document.getElementById('fieldName') as HTMLInputElement).value;
+      
+      if (!nameValue && labelValue) {
+        nameValue = labelValue.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+        (document.getElementById('fieldName') as HTMLInputElement).value = nameValue;
+      }
+      
+      const data = {
+        category_id: categoryId,
+        name: nameValue,
+        label: labelValue,
+        type: (document.getElementById('fieldType') as HTMLSelectElement).value,
+        help_text: (document.getElementById('fieldHelp') as HTMLInputElement).value,
+        required: (document.getElementById('fieldRequired') as HTMLInputElement).checked,
+        unique_value: (document.getElementById('fieldUnique') as HTMLInputElement).checked,
+        config: {}
+      };
+      
+      try {
+        const response = await fetch('/api/fields', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+        
+        if (response.ok) {
+          window.location.reload();
+        } else {
+          const error = await response.json();
+          alert('Error: ' + error.error);
+        }
+      } catch (error) {
+        alert('Error al crear el campo');
+      }
+    });
+
+    // Delete field
+    document.querySelectorAll('.delete-field').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = (btn as HTMLElement).dataset.id;
+        const name = (btn as HTMLElement).dataset.name;
+        
+        if (!confirm(`¿Eliminar el campo "${name}"?`)) return;
+        
+        try {
+          const response = await fetch('/api/fields', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id })
+          });
+          
+          if (response.ok) window.location.reload();
+        } catch (error) {
+          alert('Error al eliminar el campo');
+        }
+      });
+    });
+
+    // Delete category
+    document.getElementById('deleteBtn')?.addEventListener('click', async () => {
+      if (!confirm('¿Estás seguro? Se eliminarán todas las entradas y campos.')) return;
+      
+      try {
+        const response = await fetch('/api/categories', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: categoryId })
+        });
+        
+        if (response.ok) {
+          window.location.href = '/categories';
+        }
+      } catch (error) {
+        alert('Error al eliminar la categoría');
+      }
+    });
+  </script>
+</body>
+</html>

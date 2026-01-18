@@ -1,0 +1,288 @@
+---
+// src/pages/entries/[categorySlug]/create.astro
+import { db } from '../../../lib/db';
+
+const { categorySlug } = Astro.params;
+
+const category = db.prepare('SELECT * FROM categories WHERE slug = ?').get(categorySlug);
+
+if (!category) {
+  return Astro.redirect('/categories');
+}
+
+const fields = db.prepare('SELECT * FROM fields WHERE category_id = ? ORDER BY field_order, created_at').all((category as any).id);
+
+// Log para debug
+console.log('Category:', (category as any).name);
+console.log('Fields count:', fields.length);
+---
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nueva Entrada - {(category as any).name}</title>
+</head>
+<body class="bg-gray-50 min-h-screen" 
+  data-category-id={(category as any).id} 
+  data-category-slug={categorySlug}
+  data-fields={JSON.stringify(fields)}>
+  <header class="bg-white shadow-sm border-b border-gray-200">
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+      <a href={`/entries/${categorySlug}`} class="text-sm text-gray-500 hover:text-gray-700">← Volver a entradas</a>
+      <h1 class="text-2xl font-bold text-gray-900 mt-1">Nueva Entrada: {(category as any).name}</h1>
+    </div>
+  </header>
+
+  <main class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <form id="entryForm" class="bg-white rounded-lg shadow border border-gray-200 p-8 space-y-6">
+      {fields.map((field: any) => {
+        const config = field.config ? JSON.parse(field.config) : {};
+        
+        return (
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">
+              {field.label}
+              {field.required === 1 && <span class="text-red-500">*</span>}
+            </label>
+            
+            {field.type === 'text' && (
+              <input 
+                type="text"
+                name={field.name}
+                required={field.required === 1}
+                placeholder={config.placeholder || ''}
+                maxlength={config.max_length || undefined}
+                class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              />
+            )}
+            
+            {field.type === 'number' && (
+              <input 
+                type="number"
+                name={field.name}
+                required={field.required === 1}
+                min={config.min !== undefined ? config.min : undefined}
+                max={config.max !== undefined ? config.max : undefined}
+                step={config.step || 1}
+                value={config.default || ''}
+                class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              />
+            )}
+            
+            {field.type === 'boolean' && (
+              <div class="flex items-center">
+                <input 
+                  type="checkbox"
+                  name={field.name}
+                  checked={config.default === true}
+                  class="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                />
+                <span class="ml-2 text-sm text-gray-600">{field.help_text || 'Marcar si aplica'}</span>
+              </div>
+            )}
+            
+            {field.type === 'markdown' && (
+              <textarea 
+                name={field.name}
+                required={field.required === 1}
+                rows="8"
+                class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent font-mono text-sm"
+                placeholder="Soporta Markdown: # Título, **negrita**, *cursiva*, etc."
+              ></textarea>
+            )}
+            
+            {field.type === 'enum' && config.options && (
+              <select 
+                name={field.name}
+                required={field.required === 1}
+                class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              >
+                <option value="">Selecciona una opción...</option>
+                {config.options.map((option: string) => (
+                  <option value={option} selected={option === config.default}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            )}
+            
+            {field.type === 'list' && (
+              <div>
+                <div id={`list-${field.name}`} class="space-y-2 mb-2">
+                  <div class="flex gap-2">
+                    <input 
+                      type="text"
+                      placeholder="Añadir elemento..."
+                      class="flex-1 px-4 py-2 border border-gray-300 rounded-lg"
+                    />
+                    <button 
+                      type="button"
+                      class="add-list-item px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+                      data-field={field.name}
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+                <input type="hidden" name={field.name} value="[]" />
+              </div>
+            )}
+            
+            {field.type === 'json' && (
+              <textarea 
+                name={field.name}
+                required={field.required === 1}
+                rows="6"
+                class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent font-mono text-sm"
+                placeholder='{"key": "value"}'
+              ></textarea>
+            )}
+            
+            {field.help_text && field.type !== 'boolean' && (
+              <p class="text-xs text-gray-500 mt-1">{field.help_text}</p>
+            )}
+          </div>
+        );
+      })}
+      
+      <div class="flex gap-3 pt-4 border-t border-gray-200">
+        <button 
+          type="submit"
+          class="flex-1 px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition font-medium"
+        >
+          Crear Entrada
+        </button>
+        <a 
+          href={`/entries/${categorySlug}`}
+          class="px-6 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition font-medium"
+        >
+          Cancelar
+        </a>
+      </div>
+    </form>
+  </main>
+
+  <script>
+    const categoryId = document.body.dataset.categoryId;
+    const categorySlug = document.body.dataset.categorySlug;
+    const fieldsData = JSON.parse(document.body.dataset.fields || '[]');
+    
+    console.log('Category ID:', categoryId);
+    console.log('Fields:', fieldsData);
+    
+    const form = document.getElementById('entryForm');
+    
+    // Manejar listas dinámicas
+    document.querySelectorAll('.add-list-item').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const fieldName = (btn as HTMLElement).dataset.field;
+        const container = document.getElementById(`list-${fieldName}`);
+        const input = container?.querySelector('input[type="text"]') as HTMLInputElement;
+        const hiddenInput = document.querySelector(`input[name="${fieldName}"]`) as HTMLInputElement;
+        
+        if (input && input.value.trim()) {
+          const currentList = JSON.parse(hiddenInput.value || '[]');
+          currentList.push(input.value.trim());
+          hiddenInput.value = JSON.stringify(currentList);
+          
+          const itemDiv = document.createElement('div');
+          itemDiv.className = 'flex items-center gap-2 text-sm';
+          itemDiv.innerHTML = `
+            <span class="flex-1 px-3 py-1 bg-gray-100 rounded">${input.value.trim()}</span>
+            <button type="button" class="text-red-600 hover:text-red-800">×</button>
+          `;
+          
+          itemDiv.querySelector('button')?.addEventListener('click', () => {
+            const list = JSON.parse(hiddenInput.value);
+            const index = list.indexOf(input.value.trim());
+            if (index > -1) list.splice(index, 1);
+            hiddenInput.value = JSON.stringify(list);
+            itemDiv.remove();
+          });
+          
+          container?.appendChild(itemDiv);
+          input.value = '';
+        }
+      });
+    });
+    
+    // Submit form
+    form?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const formData = new FormData(e.target as HTMLFormElement);
+      const data: any = {};
+      
+      console.log('Processing form...');
+      
+      // Construir objeto de datos según los campos
+      fieldsData.forEach((field: any) => {
+        const value = formData.get(field.name);
+        
+        console.log(`Field ${field.name}:`, value, 'Type:', field.type);
+        
+        if (field.type === 'boolean') {
+          data[field.name] = formData.has(field.name);
+        } else if (field.type === 'number') {
+          const numValue = value ? parseFloat(value as string) : null;
+          data[field.name] = isNaN(numValue as number) ? null : numValue;
+        } else if (field.type === 'list') {
+          try {
+            data[field.name] = JSON.parse(value as string || '[]');
+          } catch {
+            data[field.name] = [];
+          }
+        } else if (field.type === 'json') {
+          try {
+            data[field.name] = JSON.parse(value as string || '{}');
+          } catch {
+            data[field.name] = {};
+          }
+        } else {
+          data[field.name] = value || '';
+        }
+      });
+      
+      // El título es obligatorio
+      const title = data.title || 'Sin título';
+      
+      console.log('Final data:', data);
+      console.log('Title:', title);
+      
+      const payload = {
+        category_id: categoryId,
+        title: title,
+        data: data
+      };
+      
+      console.log('Sending payload:', payload);
+      
+      try {
+        const response = await fetch('/api/entries', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        
+        console.log('Response status:', response.status);
+        
+        const result = await response.json();
+        console.log('Response data:', result);
+        
+        if (response.ok) {
+          console.log('Success! Redirecting...');
+          window.location.href = `/entries/${categorySlug}/${result.id}`;
+        } else {
+          console.error('Error from API:', result);
+          alert(`Error: ${result.error || 'Unknown error'}`);
+        }
+      } catch (error) {
+        console.error('Network error:', error);
+        alert('Error al crear la entrada. Revisa la consola.');
+      }
+    });
+  </script>
+</body>
+</html>

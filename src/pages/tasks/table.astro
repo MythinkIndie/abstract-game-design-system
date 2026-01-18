@@ -1,0 +1,628 @@
+---
+// src/pages/tasks/table.astro
+import { db } from '../../lib/db';
+
+const taskCategory = db.prepare('SELECT * FROM categories WHERE slug = ?').get('task') as any;
+const categories = db.prepare('SELECT id, name FROM categories WHERE is_system = 0 ORDER BY name').all();
+
+let tasks: any[] = [];
+if (taskCategory) {
+  const rawTasks = db.prepare(`
+    SELECT * FROM entries 
+    WHERE category_id = ? 
+    ORDER BY created_at DESC
+  `).all(taskCategory.id) as any[];
+  
+  tasks = rawTasks.map(task => ({
+    ...task,
+    data: JSON.parse(task.data)
+  }));
+}
+---
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tareas - Vista Tabla</title>
+  <style>
+    .task-row.collapsed .subtask-row { display: none; }
+    .subtask-row { background-color: #f9fafb; }
+    .expand-icon { transition: transform 0.2s; }
+    .expand-icon.rotate-90 { transform: rotate(90deg); }
+    .sort-icon { transition: all 0.2s; opacity: 0.3; }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+  <header class="bg-white shadow-sm border-b border-gray-200">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+      <div class="flex items-center justify-between">
+        <div>
+          <a href="/" class="text-sm text-gray-500 hover:text-gray-700">← Dashboard</a>
+          <h1 class="text-2xl font-bold text-gray-900 mt-1">📊 Vista Tabla</h1>
+        </div>
+        <div class="flex gap-2">
+          <a href="/tasks" class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200">
+            Vista Lista
+          </a>
+          <a href="/tasks/create" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
+            + Nueva Tarea
+          </a>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-full px-4 sm:px-6 lg:px-8 py-8">
+    <!-- Filtros Avanzados -->
+    <div class="bg-white rounded-lg shadow border border-gray-200 p-4 mb-6">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="font-semibold text-gray-900">Filtros</h2>
+        <button id="clearFilters" class="text-sm text-gray-500 hover:text-gray-700">Limpiar filtros</button>
+      </div>
+      
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <!-- Búsqueda texto -->
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1">Buscar</label>
+          <input 
+            type="text" 
+            id="searchText"
+            placeholder="Buscar en título..."
+            class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+          />
+        </div>
+
+        <!-- Prioridad -->
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1">Prioridad</label>
+          <select id="filterPriority" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+            <option value="">Todas</option>
+            <option value="low">⬇️ Baja</option>
+            <option value="medium">➡️ Media</option>
+            <option value="high">⬆️ Alta</option>
+            <option value="critical">🔥 Crítica</option>
+          </select>
+        </div>
+
+        <!-- Categoría -->
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1">Categoría</label>
+          <select id="filterCategory" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+            <option value="">Todas</option>
+            {categories.map((cat: any) => (
+              <option value={cat.id}>{cat.name}</option>
+            ))}
+          </select>
+        </div>
+
+        <!-- Estado -->
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1">Estado</label>
+          <select id="filterStatus" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+            <option value="">Todos</option>
+            <option value="pending">Pendiente</option>
+            <option value="completed">Completado</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Query personalizada -->
+      <div class="mt-4">
+        <label class="block text-xs font-medium text-gray-600 mb-1">
+          Query personalizada (JSON path)
+        </label>
+        <div class="flex gap-2">
+          <input 
+            type="text" 
+            id="customQuery"
+            placeholder="Ej: $.tags[0] = 'urgent'"
+            class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono"
+          />
+          <button id="applyQuery" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm">
+            Aplicar
+          </button>
+        </div>
+        <p class="text-xs text-gray-500 mt-1">
+          Ejemplos: <code>$.due_date</code>, <code>$.tags[*]</code>, <code>$.applies_to_all = true</code>
+        </p>
+      </div>
+    </div>
+
+    <!-- Tabla -->
+    <div class="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
+      <div class="overflow-x-auto">
+        <table class="w-full">
+          <thead class="bg-gray-50 border-b border-gray-200">
+            <tr>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase w-8"></th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase w-12">
+                <input type="checkbox" id="selectAll" class="rounded" />
+              </th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 transition" data-sort="title">
+                <div class="flex items-center gap-2">
+                  Tarea
+                  <svg class="w-4 h-4 sort-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                  </svg>
+                </div>
+              </th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 transition" data-sort="priority">
+                <div class="flex items-center gap-2">
+                  Prioridad
+                  <svg class="w-4 h-4 sort-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                  </svg>
+                </div>
+              </th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                Categoría
+              </th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 transition" data-sort="due_date">
+                <div class="flex items-center gap-2">
+                  Fecha Límite
+                  <svg class="w-4 h-4 sort-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                  </svg>
+                </div>
+              </th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                Etiquetas
+              </th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase w-24">
+                Acciones
+              </th>
+            </tr>
+          </thead>
+          <tbody id="taskTableBody" class="divide-y divide-gray-200">
+            {tasks.map((task: any) => {
+              const isParent = task.data.parent_task_id === null || task.data.parent_task_id === '';
+              const categoryName = task.data.related_category_id ? 
+                (() => {
+                  const cat = categories.find((c: any) => c.id === task.data.related_category_id);
+                  return cat ? (cat as any).name : '-';
+                })() : '-';
+              
+              return (
+              <tr 
+                class={`task-row hover:bg-gray-50 transition ${isParent ? 'bg-white font-medium' : 'bg-gray-50'}`}
+                data-task-id={task.id}
+                data-parent-id={task.data.parent_task_id || ''}
+                data-priority={task.data.priority}
+                data-category-id={task.data.related_category_id || ''}
+                data-completed={task.data.is_completed ? 'true' : 'false'}
+                data-title={task.data.title.toLowerCase()}
+                data-due-date={task.data.due_date || ''}
+              >
+                <td class="px-6 py-4">
+                  {isParent ? (
+                    <button class="expand-btn text-gray-400 hover:text-gray-600 transition" data-task-id={task.id}>
+                      <svg class="w-4 h-4 expand-icon transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                      </svg>
+                    </button>
+                  ) : null}
+                </td>
+                <td class="px-6 py-4">
+                  <input type="checkbox" class="task-select rounded" data-task-id={task.id} />
+                </td>
+                <td class="px-6 py-4">
+                  <div class="flex items-center gap-2">
+                    <input 
+                      type="checkbox" 
+                      class="task-checkbox w-4 h-4 rounded"
+                      data-task-id={task.id}
+                      checked={task.data.is_completed}
+                    />
+                    <a href={`/tasks/${task.id}`} class={`hover:text-indigo-600 ${isParent ? 'font-semibold text-gray-900' : 'text-gray-700'}`}>
+                      {task.data.title}
+                    </a>
+                  </div>
+                  {categoryName !== '-' && (
+                    <div class="text-xs text-gray-500 ml-6 mt-1">
+                      📁 {categoryName}
+                      {task.data.applies_to_all && <span class="ml-2 text-purple-600">• Todas las entradas</span>}
+                      {task.data.specific_entry_ids?.length > 0 && (
+                        <span class="ml-2 text-blue-600">• {task.data.specific_entry_ids.length} específica(s)</span>
+                      )}
+                    </div>
+                  )}
+                </td>
+                <td class="px-6 py-4">
+                  <span class={`px-2 py-1 rounded text-xs font-medium ${
+                    task.data.priority === 'critical' ? 'bg-red-100 text-red-700' :
+                    task.data.priority === 'high' ? 'bg-orange-100 text-orange-700' :
+                    task.data.priority === 'medium' ? 'bg-blue-100 text-blue-700' :
+                    'bg-gray-100 text-gray-600'
+                  }`}>
+                    {task.data.priority}
+                  </span>
+                </td>
+                <td class="px-6 py-4 text-sm text-gray-500">
+                  {(() => {
+                    if (!task.data.related_category_id) return '-';
+                    const cat = categories.find((c: any) => c.id === task.data.related_category_id);
+                    return cat ? (cat as any).name : '-';
+                  })()}
+                </td>
+                <td class="px-6 py-4 text-sm text-gray-500">
+                  {task.data.due_date ? new Date(task.data.due_date).toLocaleDateString('es-ES') : '-'}
+                </td>
+                <td class="px-6 py-4">
+                  <div class="flex flex-wrap gap-1">
+                    {task.data.tags?.slice(0, 2).map((tag: string) => (
+                      <span class="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs">
+                        #{tag}
+                      </span>
+                    ))}
+                    {task.data.tags?.length > 2 && (
+                      <span class="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs">
+                        +{task.data.tags.length - 2}
+                      </span>
+                    )}
+                  </div>
+                </td>
+                <td class="px-6 py-4">
+                  <button class="delete-task text-red-600 hover:text-red-800 text-sm" data-task-id={task.id}>
+                    Eliminar
+                  </button>
+                </td>
+              </tr>
+            );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
+        <span class="text-sm text-gray-500">
+          <span id="visibleCount">{tasks.length}</span> de {tasks.length} tareas
+        </span>
+        <div class="flex gap-2">
+          <button id="bulkComplete" class="px-3 py-1 bg-green-100 text-green-700 rounded hover:bg-green-200 text-sm" disabled>
+            Completar seleccionadas
+          </button>
+          <button id="bulkDelete" class="px-3 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200 text-sm" disabled>
+            Eliminar seleccionadas
+          </button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    let allTasks: any[] = [];
+    let filteredTasks: any[] = [];
+    
+    // Cargar todas las tareas en memoria
+    document.addEventListener('DOMContentLoaded', () => {
+      const rows = document.querySelectorAll('.task-row');
+      allTasks = Array.from(rows).map(row => ({
+        element: row,
+        id: (row as HTMLElement).dataset.taskId,
+        parentId: (row as HTMLElement).dataset.parentId,
+        priority: (row as HTMLElement).dataset.priority,
+        categoryId: (row as HTMLElement).dataset.categoryId,
+        completed: (row as HTMLElement).dataset.completed === 'true',
+        title: (row as HTMLElement).dataset.title,
+        dueDate: (row as HTMLElement).dataset.dueDate
+      }));
+      filteredTasks = [...allTasks];
+    });
+
+    // Filtros
+    const searchText = document.getElementById('searchText') as HTMLInputElement;
+    const filterPriority = document.getElementById('filterPriority') as HTMLSelectElement;
+    const filterCategory = document.getElementById('filterCategory') as HTMLSelectElement;
+    const filterStatus = document.getElementById('filterStatus') as HTMLSelectElement;
+
+    function applyFilters() {
+      const search = searchText?.value.toLowerCase() || '';
+      const priority = filterPriority?.value || '';
+      const category = filterCategory?.value || '';
+      const status = filterStatus?.value || '';
+
+      filteredTasks = allTasks.filter(task => {
+        const matchesSearch = !search || task.title.includes(search);
+        const matchesPriority = !priority || task.priority === priority;
+        const matchesCategory = !category || task.categoryId === category;
+        const matchesStatus = !status || 
+          (status === 'completed' && task.completed) ||
+          (status === 'pending' && !task.completed);
+
+        return matchesSearch && matchesPriority && matchesCategory && matchesStatus;
+      });
+
+      updateTable();
+    }
+
+    function updateTable() {
+      allTasks.forEach(task => {
+        (task.element as HTMLElement).style.display = 
+          filteredTasks.includes(task) ? '' : 'none';
+      });
+
+      document.getElementById('visibleCount')!.textContent = String(filteredTasks.length);
+    }
+
+    searchText?.addEventListener('input', applyFilters);
+    filterPriority?.addEventListener('change', applyFilters);
+    filterCategory?.addEventListener('change', applyFilters);
+    filterStatus?.addEventListener('change', applyFilters);
+
+    document.getElementById('clearFilters')?.addEventListener('click', () => {
+      if (searchText) searchText.value = '';
+      if (filterPriority) filterPriority.value = '';
+      if (filterCategory) filterCategory.value = '';
+      if (filterStatus) filterStatus.value = '';
+      applyFilters();
+    });
+
+    // Ordenamiento
+    let currentSort = { field: null, direction: null }; // null, 'asc', 'desc'
+    
+    document.querySelectorAll('[data-sort]').forEach(header => {
+      header.addEventListener('click', () => {
+        const sortBy = (header as HTMLElement).dataset.sort!;
+        const icon = header.querySelector('.sort-icon');
+        
+        // Ciclar: null → asc → desc → null
+        if (currentSort.field === sortBy) {
+          if (currentSort.direction === null) {
+            currentSort.direction = 'asc';
+          } else if (currentSort.direction === 'asc') {
+            currentSort.direction = 'desc';
+          } else {
+            currentSort.direction = null;
+            currentSort.field = null;
+          }
+        } else {
+          currentSort.field = sortBy;
+          currentSort.direction = 'asc';
+        }
+        
+        // Actualizar iconos
+        document.querySelectorAll('.sort-icon').forEach(i => {
+          (i as HTMLElement).style.opacity = '0.3';
+          (i as HTMLElement).style.transform = 'none';
+        });
+        
+        if (currentSort.direction) {
+          (icon as HTMLElement).style.opacity = '1';
+          if (currentSort.direction === 'desc') {
+            (icon as HTMLElement).style.transform = 'rotate(180deg)';
+          }
+        }
+        
+        sortTasks();
+      });
+    });
+    
+    function sortTasks() {
+      if (!currentSort.direction) {
+        // Restaurar orden original
+        filteredTasks = [...allTasks];
+        updateTable();
+        return;
+      }
+      
+      filteredTasks.sort((a, b) => {
+        let aVal, bVal;
+        
+        if (currentSort.field === 'title') {
+          aVal = a.title;
+          bVal = b.title;
+        } else if (currentSort.field === 'priority') {
+          const priorityOrder = { low: 1, medium: 2, high: 3, critical: 4 };
+          aVal = priorityOrder[a.priority as keyof typeof priorityOrder] || 0;
+          bVal = priorityOrder[b.priority as keyof typeof priorityOrder] || 0;
+        } else if (currentSort.field === 'due_date') {
+          aVal = a.dueDate || '9999-12-31';
+          bVal = b.dueDate || '9999-12-31';
+        }
+        
+        if (currentSort.direction === 'asc') {
+          return aVal > bVal ? 1 : -1;
+        } else {
+          return aVal < bVal ? 1 : -1;
+        }
+      });
+      
+      updateTable();
+    }
+
+    // Expand/Collapse subtareas
+    document.querySelectorAll('.expand-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const taskId = (btn as HTMLElement).dataset.taskId;
+        const icon = btn.querySelector('.expand-icon');
+        const row = (btn as HTMLElement).closest('tr');
+        
+        // Toggle icono
+        const isExpanded = icon?.classList.contains('rotate-90');
+        if (isExpanded) {
+          icon?.classList.remove('rotate-90');
+        } else {
+          icon?.classList.add('rotate-90');
+        }
+        
+        // Buscar subtareas existentes
+        const existingSubtasks = document.querySelectorAll(`[data-parent-id="${taskId}"]`);
+        
+        if (existingSubtasks.length === 0) {
+          // Cargar subtareas por primera vez
+          await loadSubtasks(taskId, row!);
+        } else {
+          // Toggle visibilidad
+          existingSubtasks.forEach(sub => {
+            (sub as HTMLElement).style.display = 
+              (sub as HTMLElement).style.display === 'none' ? '' : 'none';
+          });
+        }
+      });
+    });
+
+    async function loadSubtasks(parentId: string, parentRow: Element) {
+      try {
+        const response = await fetch(`/api/tasks?parent_id=${parentId}`);
+        const subtasks = await response.json();
+        
+        subtasks.forEach((subtask: any, index: number) => {
+          const newRow = document.createElement('tr');
+          newRow.className = 'subtask-row bg-gray-50 border-l-4 border-indigo-200';
+          newRow.dataset.parentId = parentId;
+          newRow.dataset.taskId = subtask.id;
+          
+          const priorityColors = {
+            low: 'bg-gray-100 text-gray-700',
+            medium: 'bg-blue-100 text-blue-700',
+            high: 'bg-orange-100 text-orange-700',
+            critical: 'bg-red-100 text-red-700'
+          };
+          
+          newRow.innerHTML = `
+            <td></td>
+            <td class="px-6 py-4">
+              <input type="checkbox" class="task-select rounded" data-task-id="${subtask.id}" />
+            </td>
+            <td class="px-6 py-4">
+              <div class="flex items-center gap-2 pl-8">
+                <span class="text-gray-400">└─</span>
+                <input type="checkbox" class="task-checkbox w-4 h-4 rounded" data-task-id="${subtask.id}" ${subtask.data.is_completed ? 'checked' : ''} />
+                <a href="/tasks/${subtask.id}" class="text-gray-700 hover:text-indigo-600">${subtask.data.title}</a>
+              </div>
+            </td>
+            <td class="px-6 py-4">
+              <span class="px-2 py-1 rounded text-xs font-medium ${priorityColors[subtask.data.priority as keyof typeof priorityColors] || 'bg-gray-100 text-gray-600'}">
+                ${subtask.data.priority}
+              </span>
+            </td>
+            <td class="px-6 py-4 text-sm text-gray-500">-</td>
+            <td class="px-6 py-4 text-sm text-gray-500">${subtask.data.due_date ? new Date(subtask.data.due_date).toLocaleDateString('es-ES') : '-'}</td>
+            <td class="px-6 py-4">
+              ${subtask.data.tags?.slice(0, 2).map((tag: string) => `
+                <span class="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs">#${tag}</span>
+              `).join('') || ''}
+            </td>
+            <td class="px-6 py-4">
+              <button class="delete-task text-red-600 hover:text-red-800 text-sm" data-task-id="${subtask.id}">Eliminar</button>
+            </td>
+          `;
+          
+          parentRow.after(newRow);
+          
+          // Actualizar allTasks
+          allTasks.push({
+            element: newRow,
+            id: subtask.id,
+            parentId: parentId,
+            priority: subtask.data.priority,
+            categoryId: '',
+            completed: subtask.data.is_completed,
+            title: subtask.data.title.toLowerCase(),
+            dueDate: subtask.data.due_date || ''
+          });
+        });
+      } catch (error) {
+        console.error('Error loading subtasks:', error);
+      }
+    }
+
+    // Checkboxes completado
+    document.addEventListener('change', async (e) => {
+      if ((e.target as HTMLElement).classList.contains('task-checkbox')) {
+        const taskId = (e.target as HTMLElement).dataset.taskId;
+        const isCompleted = (e.target as HTMLInputElement).checked;
+        
+        try {
+          await fetch('/api/tasks', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: taskId, is_completed: isCompleted })
+          });
+        } catch (error) {
+          console.error('Error updating task:', error);
+        }
+      }
+    });
+
+    // Selección múltiple
+    const selectAll = document.getElementById('selectAll') as HTMLInputElement;
+    selectAll?.addEventListener('change', () => {
+      document.querySelectorAll('.task-select').forEach(cb => {
+        (cb as HTMLInputElement).checked = selectAll.checked;
+      });
+      updateBulkButtons();
+    });
+
+    document.addEventListener('change', (e) => {
+      if ((e.target as HTMLElement).classList.contains('task-select')) {
+        updateBulkButtons();
+      }
+    });
+
+    function updateBulkButtons() {
+      const selected = document.querySelectorAll('.task-select:checked').length;
+      const bulkComplete = document.getElementById('bulkComplete') as HTMLButtonElement;
+      const bulkDelete = document.getElementById('bulkDelete') as HTMLButtonElement;
+      
+      if (bulkComplete) bulkComplete.disabled = selected === 0;
+      if (bulkDelete) bulkDelete.disabled = selected === 0;
+    }
+
+    // Acciones en lote
+    document.getElementById('bulkComplete')?.addEventListener('click', async () => {
+      const selected = Array.from(document.querySelectorAll('.task-select:checked'))
+        .map(cb => (cb as HTMLElement).dataset.taskId);
+      
+      for (const taskId of selected) {
+        await fetch('/api/tasks', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: taskId, is_completed: true })
+        });
+      }
+      
+      window.location.reload();
+    });
+
+    document.getElementById('bulkDelete')?.addEventListener('click', async () => {
+      if (!confirm('¿Eliminar las tareas seleccionadas?')) return;
+      
+      const selected = Array.from(document.querySelectorAll('.task-select:checked'))
+        .map(cb => (cb as HTMLElement).dataset.taskId);
+      
+      for (const taskId of selected) {
+        await fetch('/api/tasks', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: taskId })
+        });
+      }
+      
+      window.location.reload();
+    });
+
+    // Eliminar individual
+    document.addEventListener('click', async (e) => {
+      if ((e.target as HTMLElement).classList.contains('delete-task')) {
+        const taskId = (e.target as HTMLElement).dataset.taskId;
+        if (!confirm('¿Eliminar esta tarea?')) return;
+        
+        try {
+          await fetch('/api/tasks', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: taskId })
+          });
+          window.location.reload();
+        } catch (error) {
+          alert('Error al eliminar');
+        }
+      }
+    });
+  </script>
+</body>
+</html>
