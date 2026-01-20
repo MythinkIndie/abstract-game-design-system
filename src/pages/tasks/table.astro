@@ -7,7 +7,6 @@ const categories = db.prepare('SELECT id, name FROM categories WHERE is_system =
 
 let tasks: any[] = [];
 if (taskCategory) {
-  // SOLO tareas principales (sin parent)
   const rawTasks = db.prepare(`
     SELECT * FROM entries 
     WHERE category_id = ? 
@@ -15,10 +14,21 @@ if (taskCategory) {
     ORDER BY created_at DESC
   `).all(taskCategory.id) as any[];
   
-  tasks = rawTasks.map(task => ({
-    ...task,
-    data: JSON.parse(task.data)
-  }));
+  tasks = rawTasks.map(task => {
+    const data = JSON.parse(task.data);
+    
+    // Contar subtareas
+    const subtaskCount = db.prepare(`
+      SELECT COUNT(*) as count FROM entries 
+      WHERE category_id = ? AND json_extract(data, '$.parent_task_id') = ?
+    `).get(taskCategory.id, task.id) as any;
+    
+    return {
+      ...task,
+      data,
+      subtask_count: subtaskCount.count
+    };
+  });
 }
 ---
 
@@ -197,15 +207,22 @@ if (taskCategory) {
                 >
                   {/* Botón expandir */}
                   <td class="px-6 py-4 w-12">
-                    <button 
-                      class="expand-btn text-gray-400 hover:text-indigo-600 transition focus:outline-none"
-                      data-task-id={task.id}
-                      title="Ver subtareas"
-                    >
-                      <svg class="w-5 h-5 expand-icon transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-                      </svg>
-                    </button>
+                    {task.subtask_count > 0 ? (
+                      <button 
+                        class="expand-btn text-gray-400 hover:text-indigo-600 transition focus:outline-none"
+                        data-task-id={task.id}
+                        title={`Ver ${task.subtask_count} subtarea${task.subtask_count !== 1 ? 's' : ''}`}
+                      >
+                        <svg class="w-5 h-5 expand-icon transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                        </svg>
+                        <span class="absolute -top-1 -right-1 w-4 h-4 bg-indigo-600 text-white text-xs rounded-full flex items-center justify-center">
+                          {task.subtask_count}
+                        </span>
+                      </button>
+                    ) : (
+                      <div class="w-5 h-5"></div>
+                    )}
                   </td>
                   
                   <td class="px-6 py-4">
@@ -327,6 +344,15 @@ if (taskCategory) {
   
   .subtask-row:hover {
     background-color: linear-gradient(to right, #f1f5f9 0%, #f9fafb 100%);
+  }
+
+  .expand-btn {
+    position: relative;
+  }
+
+  .expand-btn span {
+    font-size: 9px;
+    line-height: 1;
   }
   
   /* Icono de expansión suave */
@@ -489,90 +515,86 @@ if (taskCategory) {
     });
 
     document.querySelectorAll('.expand-btn').forEach(btn => {
-  btn.addEventListener('click', async (e) => {
-    e.stopPropagation();
-    const taskId = (btn as HTMLElement).dataset.taskId!;
-    const icon = btn.querySelector('.expand-icon');
-    const row = btn.closest('tr')!;
-    
-    const isExpanded = expandedTasks.has(taskId);
-    
-    if (isExpanded) {
-      // Colapsar
-      expandedTasks.delete(taskId);
-      icon?.classList.remove('rotate-90');
-      
-      // Ocultar subtareas
-      const subtasks = document.querySelectorAll(`[data-parent-id="${taskId}"]`);
-      subtasks.forEach(sub => {
-        (sub as HTMLElement).style.maxHeight = '0';
-        (sub as HTMLElement).style.opacity = '0';
-        setTimeout(() => (sub as HTMLElement).remove(), 300);
-      });
-      
-    } else {
-      // Expandir
-      expandedTasks.add(taskId);
-      icon?.classList.add('rotate-90');
-      
-      // Mostrar loading
-      const loadingRow = document.createElement('tr');
-      loadingRow.className = 'subtask-loading bg-gray-50';
-      loadingRow.innerHTML = `
-        <td colspan="8" class="px-6 py-3 text-center text-sm text-gray-500">
-          <svg class="animate-spin w-4 h-4 inline-block mr-2" fill="none" viewBox="0 0 24 24">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-          </svg>
-          Cargando subtareas...
-        </td>
-      `;
-      row.after(loadingRow);
-      
-      try {
-        // Cargar subtareas
-        const response = await fetch(`/api/tasks?parent_id=${taskId}`);
-        const subtasks = await response.json();
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const taskId = (btn as HTMLElement).dataset.taskId!;
+        const icon = btn.querySelector('.expand-icon');
+        const row = btn.closest('tr')!;
         
-        // Eliminar loading
-        loadingRow.remove();
+        const isExpanded = expandedTasks.has(taskId);
         
-        if (subtasks.length === 0) {
-          const emptyRow = document.createElement('tr');
-          emptyRow.className = 'subtask-row bg-gray-50';
-          emptyRow.dataset.parentId = taskId;
-          emptyRow.innerHTML = `
-            <td colspan="8" class="px-6 py-3 text-center text-sm text-gray-500 italic">
-              No hay subtareas
+        if (isExpanded) {
+          // Colapsar
+          expandedTasks.delete(taskId);
+          icon?.classList.remove('rotate-90');
+          
+          const subtasks = document.querySelectorAll(`[data-parent-id="${taskId}"]`);
+          subtasks.forEach(sub => {
+            (sub as HTMLElement).style.maxHeight = '0';
+            (sub as HTMLElement).style.opacity = '0';
+            setTimeout(() => (sub as HTMLElement).remove(), 300);
+          });
+          
+        } else {
+          // Expandir
+          expandedTasks.add(taskId);
+          icon?.classList.add('rotate-90');
+          
+          // Mostrar loading
+          const loadingRow = document.createElement('tr');
+          loadingRow.className = 'subtask-loading bg-gray-50';
+          loadingRow.innerHTML = `
+            <td colspan="8" class="px-6 py-3 text-center text-sm text-gray-500">
+              <svg class="animate-spin w-4 h-4 inline-block mr-2" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              Cargando subtareas...
             </td>
           `;
-          row.after(emptyRow);
-        } else {
-          // Insertar subtareas
-          let insertAfter = row;
-          subtasks.forEach((subtask: any, index: number) => {
-            const subRow = createSubtaskRow(subtask, taskId, index);
-            insertAfter.after(subRow);
-            insertAfter = subRow;
+          row.after(loadingRow);
+          
+          try {
+            const response = await fetch(`/api/tasks?parent_id=${taskId}`);
+            const subtasks = await response.json();
             
-            // Animación de entrada
-            setTimeout(() => {
-              subRow.style.maxHeight = '100px';
-              subRow.style.opacity = '1';
-            }, index * 50);
-          });
+            loadingRow.remove();
+            
+            if (subtasks.length === 0) {
+              // Esto no debería pasar si el contador es correcto
+              const emptyRow = document.createElement('tr');
+              emptyRow.className = 'subtask-row bg-gray-50';
+              emptyRow.dataset.parentId = taskId;
+              emptyRow.innerHTML = `
+                <td colspan="8" class="px-6 py-3 text-center text-sm text-gray-500 italic">
+                  No hay subtareas
+                </td>
+              `;
+              row.after(emptyRow);
+            } else {
+              let insertAfter = row;
+              subtasks.forEach((subtask: any, index: number) => {
+                const subRow = createSubtaskRow(subtask, taskId, index);
+                insertAfter.after(subRow);
+                insertAfter = subRow;
+                
+                setTimeout(() => {
+                  subRow.style.maxHeight = '100px';
+                  subRow.style.opacity = '1';
+                }, index * 50);
+              });
+            }
+          } catch (error) {
+            console.error('Error loading subtasks:', error);
+            loadingRow.innerHTML = `
+              <td colspan="8" class="px-6 py-3 text-center text-sm text-red-600">
+                Error al cargar subtareas
+              </td>
+            `;
+          }
         }
-      } catch (error) {
-        console.error('Error loading subtasks:', error);
-        loadingRow.innerHTML = `
-          <td colspan="8" class="px-6 py-3 text-center text-sm text-red-600">
-            Error al cargar subtareas
-          </td>
-        `;
-      }
-    }
-  });
-});
+      });
+    });
 
 function createSubtaskRow(subtask: any, parentId: string, index: number): HTMLTableRowElement {
   const row = document.createElement('tr');

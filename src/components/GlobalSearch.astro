@@ -1,0 +1,271 @@
+---
+import db from "../lib/db";
+
+const categories = db.prepare('SELECT id, name, slug FROM categories ORDER BY name').all();
+// const allTags = db.prepare(`
+//   SELECT DISTINCT json_extract(value, '$') as tag
+//   FROM entries, json_each(json_extract(data, '$.tags'))
+//   WHERE json_extract(data, '$.tags') IS NOT NULL
+//   ORDER BY tag`).all();
+---
+
+<div class="relative" id="globalSearch">
+  <!-- Botón para abrir búsqueda (Ctrl+K) -->
+  <button 
+    id="searchTrigger"
+    class="flex items-center w-full gap-2 px-3 py-2 bg-white border border-gray-300 rounded-lg hover:border-indigo-400 transition"
+  >
+    <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+    </svg>
+    <span class="text-sm text-gray-600">Buscar...</span>
+    <kbd class="hidden sm:inline-block px-2 py-1 text-xs font-semibold text-gray-600 bg-gray-100 border border-gray-300 rounded">
+      Ctrl K
+    </kbd>
+  </button>
+  
+  <!-- Modal de búsqueda -->
+  <div 
+    id="searchModal"
+    class="hidden fixed inset-0 z-50 bg-black bg-opacity-50 flex items-start justify-center pt-20"
+  >
+    <div class="bg-white rounded-lg shadow-2xl max-w-3xl w-full mx-4 max-h-[80vh] flex flex-col">
+      <!-- Header con filtros -->
+      <div class="p-4 border-b border-gray-200">
+        <div class="flex items-center gap-3 mb-3">
+          <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          <input 
+            type="text" 
+            id="searchInput"
+            placeholder="Buscar entradas, categorías, etiquetas..."
+            class="flex-1 text-lg border-none focus:ring-0 outline-none"
+            autocomplete="off"
+          />
+          <button id="closeSearch" class="text-gray-400 hover:text-gray-600">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        
+        <!-- Filtros -->
+        <div class="flex flex-wrap gap-2">
+          <select id="typeFilter" class="text-xs px-3 py-1 border border-gray-300 rounded-lg">
+            <option value="all">Todo</option>
+            <option value="entries">Solo entradas</option>
+            <option value="categories">Solo categorías</option>
+          </select>
+          
+          <select id="categoryFilter" class="text-xs px-3 py-1 border border-gray-300 rounded-lg">
+            <option value="">Todas las categorías</option>
+            {categories.map((cat: any) => (
+              <option value={cat.id}>{cat.name}</option>
+            ))}
+          </select>
+          
+          <select id="tagFilter" class="text-xs px-3 py-1 border border-gray-300 rounded-lg">
+            <option value="">Todas las etiquetas</option>
+            <!-- {allTags.map((t: any) => (
+              <option value={t.tag}>#{t.tag}</option>
+            ))} -->
+          </select>
+        </div>
+      </div>
+      
+      <!-- Resultados -->
+      <div id="searchResults" class="flex-1 overflow-y-auto p-4">
+        <p class="text-sm text-gray-500 text-center py-8">
+          Escribe para buscar...
+        </p>
+      </div>
+      
+      <!-- Footer -->
+      <div class="p-3 border-t border-gray-200 bg-gray-50 text-xs text-gray-500 flex items-center justify-between">
+        <span>↑↓ Navegar • Enter Abrir • Esc Cerrar</span>
+        <span id="resultCount"></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let searchTimeout: number | null = null;
+let selectedIndex = 0;
+let currentResults: any[] = [];
+
+const modal = document.getElementById('searchModal')!;
+const input = document.getElementById('searchInput') as HTMLInputElement;
+const resultsContainer = document.getElementById('searchResults')!;
+
+// Abrir modal (Ctrl+K o click)
+document.getElementById('searchTrigger')?.addEventListener('click', () => {
+  modal.classList.remove('hidden');
+  input.focus();
+});
+
+document.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+    e.preventDefault();
+    modal.classList.remove('hidden');
+    input.focus();
+  }
+  
+  if (e.key === 'Escape') {
+    modal.classList.add('hidden');
+  }
+});
+
+// Cerrar modal
+document.getElementById('closeSearch')?.addEventListener('click', () => {
+  modal.classList.add('hidden');
+});
+
+modal.addEventListener('click', (e) => {
+  if (e.target === modal) {
+    modal.classList.add('hidden');
+  }
+});
+
+// Búsqueda en tiempo real
+input.addEventListener('input', () => {
+  if (searchTimeout) clearTimeout(searchTimeout);
+  
+  searchTimeout = window.setTimeout(() => {
+    performSearch();
+  }, 300);
+});
+
+// Filtros
+['typeFilter', 'categoryFilter', 'tagFilter'].forEach(id => {
+  document.getElementById(id)?.addEventListener('change', () => {
+    performSearch();
+  });
+});
+
+async function performSearch() {
+  const query = input.value.trim();
+  const type = (document.getElementById('typeFilter') as HTMLSelectElement).value;
+  const categoryId = (document.getElementById('categoryFilter') as HTMLSelectElement).value;
+  const tag = (document.getElementById('tagFilter') as HTMLSelectElement).value;
+  
+  if (!query && !categoryId && !tag) {
+    resultsContainer.innerHTML = '<p class="text-sm text-gray-500 text-center py-8">Escribe para buscar...</p>';
+    return;
+  }
+  
+  resultsContainer.innerHTML = '<p class="text-sm text-gray-500 text-center py-8">Buscando...</p>';
+  
+  try {
+    const params = new URLSearchParams({
+      q: query,
+      type: type
+    });
+    
+    if (categoryId) params.append('category_id', categoryId);
+    if (tag) params.append('tags', tag);
+    
+    const response = await fetch(`/api/search?${params}`);
+    const results = await response.json();
+    
+    displayResults(results);
+  } catch (error) {
+    console.error('Search error:', error);
+    resultsContainer.innerHTML = '<p class="text-sm text-red-500 text-center py-8">Error en la búsqueda</p>';
+  }
+}
+
+function displayResults(results: any) {
+  const { entries, categories } = results;
+  const totalResults = entries.length + categories.length;
+  
+  document.getElementById('resultCount')!.textContent = 
+    `${totalResults} resultado${totalResults !== 1 ? 's' : ''}`;
+  
+  if (totalResults === 0) {
+    resultsContainer.innerHTML = '<p class="text-sm text-gray-500 text-center py-8">No se encontraron resultados</p>';
+    return;
+  }
+  
+  let html = '';
+  
+  // Categorías
+  if (categories.length > 0) {
+    html += '<div class="mb-6"><h3 class="text-xs font-semibold text-gray-500 uppercase mb-2">Categorías</h3><div class="space-y-1">';
+    categories.forEach((cat: any) => {
+      html += `
+        <a href="/categories/${cat.slug}" class="search-result block p-3 rounded-lg hover:bg-gray-100 transition">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold" style="background-color: ${cat.color}">
+              ${cat.name.substring(0, 2).toUpperCase()}
+            </div>
+            <div class="flex-1">
+              <p class="font-semibold text-gray-900">${cat.name}</p>
+              <p class="text-xs text-gray-500">${cat.description || 'Sin descripción'}</p>
+            </div>
+          </div>
+        </a>
+      `;
+    });
+    html += '</div></div>';
+  }
+  
+  // Entradas
+  if (entries.length > 0) {
+    html += '<div><h3 class="text-xs font-semibold text-gray-500 uppercase mb-2">Entradas</h3><div class="space-y-1">';
+    entries.forEach((entry: any) => {
+      const tags = entry.data.tags?.slice(0, 3) || [];
+      html += `
+        <a href="/entries/${entry.category_slug}/${entry.id}" class="search-result block p-3 rounded-lg hover:bg-gray-100 transition">
+          <div class="flex items-start gap-3">
+            <div class="w-2 h-2 rounded-full mt-2" style="background-color: ${entry.category_color}"></div>
+            <div class="flex-1">
+              <p class="font-semibold text-gray-900">${entry.title}</p>
+              <div class="flex items-center gap-2 mt-1">
+                <span class="text-xs text-gray-500">${entry.category_name}</span>
+                ${tags.map((tag: string) => `<span class="text-xs px-2 py-0.5 bg-gray-100 rounded">#${tag}</span>`).join('')}
+              </div>
+            </div>
+          </div>
+        </a>
+      `;
+    });
+    html += '</div></div>';
+  }
+  
+  resultsContainer.innerHTML = html;
+  currentResults = [...categories.map((c: any) => ({ type: 'category', ...c })), ...entries.map((e: any) => ({ type: 'entry', ...e }))];
+  selectedIndex = 0;
+}
+
+// Navegación con teclado
+input.addEventListener('keydown', (e) => {
+  const results = document.querySelectorAll('.search-result');
+  
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    selectedIndex = Math.min(selectedIndex + 1, results.length - 1);
+    updateSelection();
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    selectedIndex = Math.max(selectedIndex - 1, 0);
+    updateSelection();
+  } else if (e.key === 'Enter' && results.length > 0) {
+    e.preventDefault();
+    (results[selectedIndex] as HTMLAnchorElement).click();
+  }
+});
+
+function updateSelection() {
+  const results = document.querySelectorAll('.search-result');
+  results.forEach((el, i) => {
+    if (i === selectedIndex) {
+      el.classList.add('bg-indigo-50', 'border-indigo-300');
+      el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    } else {
+      el.classList.remove('bg-indigo-50', 'border-indigo-300');
+    }
+  });
+}
+</script>

@@ -370,7 +370,7 @@ const entryCount = db.prepare('SELECT COUNT(*) as count FROM entries WHERE categ
           
           if (response.ok) {
             // Animación de salida
-            const fieldCard = btn.closest('.border');
+            const fieldCard:HTMLElement|null = btn.closest('.border');
             if (fieldCard) {
               fieldCard.style.opacity = '0';
               fieldCard.style.transform = 'translateX(-20px)';
@@ -387,77 +387,117 @@ const entryCount = db.prepare('SELECT COUNT(*) as count FROM entries WHERE categ
       });
     });
 
-    document.getElementById('fieldType')?.addEventListener('change', async (e) => {
-      const type = (e.target as HTMLSelectElement).value;
-      const relationConfig = document.getElementById('relationConfig');
-      
-      if (type === 'relation') {
-        relationConfig?.classList.remove('hidden');
-        
-        // Cargar categorías disponibles
-        const response = await fetch('/api/categories');
-        const categories = await response.json();
-        
-        const select = document.getElementById('relationCategory') as HTMLSelectElement;
-        select.innerHTML = '<option value="">Selecciona una categoría...</option>' +
-          categories.map((cat: any) => 
+   document.getElementById('addFieldBtn')?.addEventListener('click', async () => {
+  modal?.classList.remove('hidden');
+  
+  // Cargar categorías disponibles para relaciones
+  try {
+    const response = await fetch('/api/categories');
+    const categories = await response.json();
+    
+    const select = document.getElementById('relationCategory') as HTMLSelectElement;
+    if (select) {
+      select.innerHTML = '<option value="">Selecciona una categoría...</option>' +
+        categories
+          .filter((cat: any) => !cat.is_system) // Filtrar solo categorías custom
+          .map((cat: any) => 
             `<option value="${cat.id}">${cat.name}</option>`
           ).join('');
-      } else {
-        relationConfig?.classList.add('hidden');
-      }
-    });
+    }
+  } catch (error) {
+    console.error('Error loading categories:', error);
+  }
+});
 
-    document.getElementById('fieldForm')?.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      
-      const type = (document.getElementById('fieldType') as HTMLSelectElement).value;
-      let config: any = {};
-      
-      if (type === 'relation') {
-        const relatedCategoryId = (document.getElementById('relationCategory') as HTMLSelectElement).value;
-        const allowMultiple = (document.getElementById('relationMultiple') as HTMLInputElement).checked;
-        
-        if (!relatedCategoryId) {
-          alert('Debes seleccionar una categoría relacionada');
-          return;
-        }
-        
-        config = {
-          related_category_id: relatedCategoryId,
-          allow_multiple: allowMultiple
-        };
-      }
-      
-      const data = {
-        category_id: categoryId,
-        name: (document.getElementById('fieldName') as HTMLInputElement).value || 
-              generateSlug((document.getElementById('fieldLabel') as HTMLInputElement).value),
-        label: (document.getElementById('fieldLabel') as HTMLInputElement).value,
-        type: type,
-        help_text: (document.getElementById('fieldHelp') as HTMLInputElement).value,
-        required: (document.getElementById('fieldRequired') as HTMLInputElement).checked,
-        unique_value: (document.getElementById('fieldUnique') as HTMLInputElement).checked,
-        config: config
-      };
-      
-      try {
-        const response = await fetch('/api/fields', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data)
-        });
-        
-        if (response.ok) {
-          window.location.reload();
-        } else {
-          const error = await response.json();
-          alert('Error: ' + error.error);
-        }
-      } catch (error) {
-        alert('Error al crear el campo');
-      }
+// Mostrar/ocultar configuración de relación según el tipo
+document.getElementById('fieldType')?.addEventListener('change', (e) => {
+  const type = (e.target as HTMLSelectElement).value;
+  const relationConfig = document.getElementById('relationConfig');
+  const enumConfig = document.getElementById('enumConfig'); // Si existe
+  
+  // Ocultar todas las configs
+  relationConfig?.classList.add('hidden');
+  enumConfig?.classList.add('hidden');
+  
+  // Mostrar la config apropiada
+  if (type === 'relation') {
+    relationConfig?.classList.remove('hidden');
+  } else if (type === 'enum') {
+    enumConfig?.classList.remove('hidden');
+  }
+});
+
+// Al enviar el formulario
+document.getElementById('fieldForm')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  
+  const type = (document.getElementById('fieldType') as HTMLSelectElement).value;
+  const labelValue = (document.getElementById('fieldLabel') as HTMLInputElement).value;
+  let nameValue = (document.getElementById('fieldName') as HTMLInputElement).value;
+  
+  // Auto-generar nombre si está vacío
+  if (!nameValue && labelValue) {
+    nameValue = labelValue.toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '');
+  }
+  
+  let config: any = {};
+  
+  // Configuración específica para relaciones
+  if (type === 'relation') {
+    const relatedCategoryId = (document.getElementById('relationCategory') as HTMLSelectElement).value;
+    const allowMultiple = (document.getElementById('relationMultiple') as HTMLInputElement).checked;
+    
+    if (!relatedCategoryId) {
+      alert('Debes seleccionar una categoría relacionada');
+      return;
+    }
+    
+    config = {
+      related_category_id: relatedCategoryId,
+      allow_multiple: allowMultiple
+    };
+  }
+  // Configuración para enums
+  else if (type === 'enum') {
+    const optionsInput = document.getElementById('enumOptions') as HTMLInputElement;
+    const options = optionsInput?.value.split(',').map(s => s.trim()).filter(Boolean) || [];
+    config = { options };
+  }
+  
+  const data = {
+    category_id: categoryId,
+    name: nameValue,
+    label: labelValue,
+    type: type,
+    help_text: (document.getElementById('fieldHelp') as HTMLInputElement).value,
+    required: (document.getElementById('fieldRequired') as HTMLInputElement).checked,
+    unique_value: (document.getElementById('fieldUnique') as HTMLInputElement).checked,
+    config: config,
+    field_order: 999 // Se ordenará al final
+  };
+  
+  try {
+    const response = await fetch('/api/fields', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
     });
+    
+    if (response.ok) {
+      window.location.reload();
+    } else {
+      const error = await response.json();
+      alert('Error: ' + error.error);
+    }
+  } catch (error) {
+    console.error('Error:', error);
+    alert('Error al crear el campo');
+  }
+});
 
     function generateSlug(text: string): string {
       return text.toLowerCase()

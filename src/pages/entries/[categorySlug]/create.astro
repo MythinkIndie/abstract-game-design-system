@@ -219,70 +219,316 @@ console.log('Fields count:', fields.length);
       
       // Construir objeto de datos según los campos
       fieldsData.forEach((field: any) => {
-        const value = formData.get(field.name);
-        
-        console.log(`Field ${field.name}:`, value, 'Type:', field.type);
-        
-        if (field.type === 'boolean') {
-          data[field.name] = formData.has(field.name);
-        } else if (field.type === 'number') {
-          const numValue = value ? parseFloat(value as string) : null;
-          data[field.name] = isNaN(numValue as number) ? null : numValue;
-        } else if (field.type === 'list') {
+    const fieldName = field.name;
+    const fieldType = field.type;
+    const fieldConfig = JSON.parse(field.config || '{}');
+    
+    console.log(`Processing field: ${fieldName} (type: ${fieldType})`);
+    
+    if (fieldType === 'boolean') {
+      data[fieldName] = formData.has(fieldName);
+    } 
+    else if (fieldType === 'number') {
+      const value = formData.get(fieldName);
+      const numValue = value ? parseFloat(value as string) : null;
+      data[fieldName] = isNaN(numValue as number) ? null : numValue;
+    } 
+    else if (fieldType === 'list') {
+      try {
+        const value = formData.get(fieldName);
+        data[fieldName] = value ? JSON.parse(value as string) : [];
+      } catch {
+        data[fieldName] = [];
+      }
+    } 
+    else if (fieldType === 'json') {
+      try {
+        const value = formData.get(fieldName);
+        data[fieldName] = value ? JSON.parse(value as string || '{}') : {};
+      } catch (error) {
+        alert(`Error en JSON del campo ${fieldName}`);
+        throw error;
+      }
+    }
+    else if (fieldType === 'relation') {
+      // MANEJAR RELACIONES
+      const allowMultiple = fieldConfig.allow_multiple;
+      
+      if (allowMultiple) {
+        // Para múltiples: buscar en el array temporal
+        const hiddenInput = document.querySelector(`input[name="${fieldName}"][type="hidden"]`) as HTMLInputElement;
+        if (hiddenInput) {
           try {
-            data[field.name] = JSON.parse(value as string || '[]');
+            data[fieldName] = JSON.parse(hiddenInput.value);
           } catch {
-            data[field.name] = [];
-          }
-        } else if (field.type === 'json') {
-          try {
-            data[field.name] = JSON.parse(value as string || '{}');
-          } catch {
-            data[field.name] = {};
+            data[fieldName] = [];
           }
         } else {
-          data[field.name] = value || '';
+          data[fieldName] = [];
         }
+      } else {
+        // Para único: obtener valor del select
+        const select = document.querySelector(`.relation-select[data-field="${fieldName}"]`) as HTMLSelectElement;
+        data[fieldName] = select?.value || null;
+      }
+      
+      console.log(`Relation field ${fieldName}:`, data[fieldName]);
+    }
+    else {
+      // text, markdown, enum, etc.
+      data[fieldName] = formData.get(fieldName) || '';
+    }
+  });
+  
+  // El título es obligatorio
+  const title = data.title || 'Sin título';
+  
+  console.log('Final data:', data);
+  console.log('Title:', title);
+  
+  const payload = {
+    category_id: categoryId,
+    title: title,
+    data: data
+  };
+  
+  console.log('Sending payload:', payload);
+  
+  try {
+    const response = await fetch('/api/entries', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    
+    console.log('Response status:', response.status);
+    
+    const result = await response.json();
+    console.log('Response data:', result);
+    
+    if (response.ok) {
+      console.log('Success! Redirecting...');
+      window.location.href = `/entries/${categorySlug}/${result.id}`;
+    } else {
+      console.error('Error from API:', result);
+      alert(`Error: ${result.error || 'Unknown error'}`);
+    }
+  } catch (error) {
+    console.error('Network error:', error);
+    alert('Error al crear la entrada. Revisa la consola.');
+  }
+    });
+
+    document.addEventListener('DOMContentLoaded', async () => {
+  const relationSelects = document.querySelectorAll('.relation-select');
+  
+  for (const select of relationSelects) {
+    const fieldName = (select as HTMLElement).dataset.field!;
+    const relatedCategoryId = (select as HTMLElement).dataset.category!;
+    const allowMultiple = (select as HTMLElement).dataset.multiple === 'true';
+    
+    try {
+      const response = await fetch(`/api/entries?category_id=${relatedCategoryId}`);
+      const entries = await response.json();
+      
+      entries.forEach((entry: any) => {
+        const option = document.createElement('option');
+        option.value = entry.id;
+        option.textContent = entry.title;
+        select.appendChild(option);
       });
       
-      // El título es obligatorio
-      const title = data.title || 'Sin título';
-      
-      console.log('Final data:', data);
-      console.log('Title:', title);
-      
-      const payload = {
-        category_id: categoryId,
-        title: title,
-        data: data
-      };
-      
-      console.log('Sending payload:', payload);
-      
-      try {
-        const response = await fetch('/api/entries', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
+      // Para múltiples, usar un array temporal
+      if (allowMultiple) {
+        const selectedIds: string[] = [];
+        
+        select.addEventListener('change', (e) => {
+          const selectedId = (e.target as HTMLSelectElement).value;
+          if (selectedId && !selectedIds.includes(selectedId)) {
+            selectedIds.push(selectedId);
+            
+            // Crear badge visual
+            const container = select.closest('.relation-field-container');
+            if (container) {
+              let badgeContainer = container.querySelector('.selected-badges');
+              if (!badgeContainer) {
+                badgeContainer = document.createElement('div');
+                badgeContainer.className = 'selected-badges flex flex-wrap gap-2 mb-2';
+                select.parentElement?.insertBefore(badgeContainer, select);
+              }
+              
+              const badge = document.createElement('span');
+              badge.className = 'inline-flex items-center gap-1 px-2 py-1 bg-indigo-100 text-indigo-700 rounded text-sm';
+              badge.innerHTML = `
+                ${(e.target as HTMLSelectElement).selectedOptions[0].text}
+                <button type="button" class="remove-temp-relation" data-id="${selectedId}">×</button>
+              `;
+              badgeContainer.appendChild(badge);
+            }
+            
+            // Quitar del select
+            const option = select.querySelector(`option[value="${selectedId}"]`);
+            if (option) option.remove();
+            
+            (e.target as HTMLSelectElement).value = '';
+          }
         });
         
-        console.log('Response status:', response.status);
+        // Manejar eliminación temporal
+        document.addEventListener('click', (e) => {
+          const target = e.target as HTMLElement;
+          if (target.classList.contains('remove-temp-relation')) {
+            const idToRemove = target.dataset.id!;
+            const index = selectedIds.indexOf(idToRemove);
+            if (index > -1) selectedIds.splice(index, 1);
+            target.closest('span')?.remove();
+          }
+        });
         
-        const result = await response.json();
-        console.log('Response data:', result);
-        
-        if (response.ok) {
-          console.log('Success! Redirecting...');
-          window.location.href = `/entries/${categorySlug}/${result.id}`;
-        } else {
-          console.error('Error from API:', result);
-          alert(`Error: ${result.error || 'Unknown error'}`);
+        // Al enviar, incluir los IDs seleccionados
+        const form = document.getElementById('entryForm');
+        if (form) {
+          const originalSubmit = form.onsubmit;
+          form.onsubmit = function(e) {
+            // Añadir campo hidden con los IDs
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = fieldName;
+            input.value = JSON.stringify(selectedIds);
+            form.appendChild(input);
+            
+            if (originalSubmit) return originalSubmit.call(this, e);
+          };
         }
-      } catch (error) {
-        console.error('Network error:', error);
-        alert('Error al crear la entrada. Revisa la consola.');
       }
-    });
+      
+    } catch (error) {
+      console.error('Error loading relation options:', error);
+    }
+  }
+});
+document.addEventListener('DOMContentLoaded', async () => {
+  const relationSelects = document.querySelectorAll('.relation-select');
+  
+  // Mapa para almacenar selecciones temporales
+  const relationSelections = new Map<string, string[]>();
+  
+  for (const select of relationSelects) {
+    const fieldName = (select as HTMLElement).dataset.field!;
+    const relatedCategoryId = (select as HTMLElement).dataset.category!;
+    const allowMultiple = (select as HTMLElement).dataset.multiple === 'true';
+    
+    // Inicializar array si es múltiple
+    if (allowMultiple) {
+      relationSelections.set(fieldName, []);
+    }
+    
+    try {
+      // Cargar opciones
+      const response = await fetch(`/api/entries?category_id=${relatedCategoryId}`);
+      const entries = await response.json();
+      
+      entries.forEach((entry: any) => {
+        const option = document.createElement('option');
+        option.value = entry.id;
+        option.textContent = entry.title;
+        select.appendChild(option);
+      });
+      
+      // Manejar selección
+      select.addEventListener('change', (e) => {
+        const selectedId = (e.target as HTMLSelectElement).value;
+        const selectedText = (e.target as HTMLSelectElement).selectedOptions[0]?.text;
+        
+        if (!selectedId) return;
+        
+        if (allowMultiple) {
+          const selections = relationSelections.get(fieldName) || [];
+          
+          if (!selections.includes(selectedId)) {
+            selections.push(selectedId);
+            relationSelections.set(fieldName, selections);
+            
+            // Actualizar hidden input
+            const hiddenInput = document.querySelector(`input[name="${fieldName}"][type="hidden"]`) as HTMLInputElement;
+            if (hiddenInput) {
+              hiddenInput.value = JSON.stringify(selections);
+            }
+            
+            // Añadir badge visual
+            const container = select.closest('.relation-field-container');
+            const badgeContainer = container?.querySelector('.selected-badges');
+            
+            if (badgeContainer) {
+              const badge = document.createElement('span');
+              badge.className = 'inline-flex items-center gap-2 px-3 py-1 bg-indigo-100 text-indigo-700 rounded-md text-sm';
+              badge.innerHTML = `
+                <span>${selectedText}</span>
+                <button 
+                  type="button" 
+                  class="remove-temp-relation hover:text-indigo-900" 
+                  data-field="${fieldName}"
+                  data-id="${selectedId}"
+                  data-text="${selectedText}"
+                >
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              `;
+              badgeContainer.appendChild(badge);
+            }
+            
+            // Quitar opción del select
+            const option = select.querySelector(`option[value="${selectedId}"]`);
+            if (option) option.remove();
+          }
+          
+          (e.target as HTMLSelectElement).value = '';
+        }
+        // Si es único, no hacer nada especial (el select ya tiene el valor)
+      });
+      
+    } catch (error) {
+      console.error('Error loading relation options:', error);
+    }
+  }
+  
+  // Manejar eliminación de relaciones temporales
+  document.addEventListener('click', (e) => {
+    const target = e.target as HTMLElement;
+    const btn = target.closest('.remove-temp-relation') as HTMLElement;
+    
+    if (btn) {
+      const fieldName = btn.dataset.field!;
+      const idToRemove = btn.dataset.id!;
+      const text = btn.dataset.text!;
+      
+      // Quitar del array
+      const selections = relationSelections.get(fieldName) || [];
+      const newSelections = selections.filter(id => id !== idToRemove);
+      relationSelections.set(fieldName, newSelections);
+      
+      // Actualizar hidden input
+      const hiddenInput = document.querySelector(`input[name="${fieldName}"][type="hidden"]`) as HTMLInputElement;
+      if (hiddenInput) {
+        hiddenInput.value = JSON.stringify(newSelections);
+      }
+      
+      // Eliminar badge
+      btn.closest('span')?.remove();
+      
+      // Añadir opción de vuelta al select
+      const select = document.querySelector(`.relation-select[data-field="${fieldName}"]`) as HTMLSelectElement;
+      if (select) {
+        const option = document.createElement('option');
+        option.value = idToRemove;
+        option.textContent = text;
+        select.appendChild(option);
+      }
+    }
+  });
+});
   </script>
 </body>
 </html>

@@ -1,5 +1,4 @@
 ---
-// src/components/EntryTasksWidget.astro
 import { db } from '../lib/db';
 
 interface Props {
@@ -9,9 +8,9 @@ interface Props {
 
 const { entryId, categoryId } = Astro.props;
 
-// Obtener tareas aplicables a esta entrada
 const taskCategory = db.prepare('SELECT id FROM categories WHERE slug = ?').get('task') as any;
 let applicableTasks: any[] = [];
+let completionStats = { total: 0, completed: 0, percentage: 0 };
 
 if (taskCategory) {
   const allTasks = db.prepare(`
@@ -24,14 +23,11 @@ if (taskCategory) {
   
   applicableTasks = allTasks.map(task => {
     const data = JSON.parse(task.data);
-    
-    // Verificar si aplica a esta entrada
     const applies = data.applies_to_all || 
                    (data.specific_entry_ids && data.specific_entry_ids.includes(entryId));
     
     if (!applies) return null;
     
-    // Obtener estado de completitud
     const completion = db.prepare(`
       SELECT * FROM task_completion 
       WHERE task_id = ? AND entry_id = ?
@@ -40,21 +36,49 @@ if (taskCategory) {
     return {
       ...task,
       data,
-      is_completed: completion ? completion.is_completed === 1 : false
+      is_completed: completion ? completion.is_completed === 1 : data.is_completed || false
     };
   }).filter(Boolean);
+  
+  completionStats.total = applicableTasks.length;
+  completionStats.completed = applicableTasks.filter(t => t.is_completed).length;
+  completionStats.percentage = completionStats.total > 0 
+    ? Math.round((completionStats.completed / completionStats.total) * 100) 
+    : 0;
 }
 ---
 
 <div class="bg-white rounded-lg shadow border border-gray-200 p-6">
   <div class="flex items-center justify-between mb-4">
     <h2 class="text-lg font-semibold text-gray-900">Tareas</h2>
+    
+    {/* BARRA DE PROGRESO */}
+    {completionStats.total > 0 && (
+      <div class="flex items-center gap-3">
+        <div class="flex-1 w-24">
+          <div class="w-full bg-gray-200 rounded-full h-2">
+            <div 
+              class={`h-2 rounded-full transition-all ${
+                completionStats.percentage === 100 ? 'bg-green-600' :
+                completionStats.percentage >= 50 ? 'bg-blue-600' :
+                'bg-yellow-600'
+              }`}
+              style={`width: ${completionStats.percentage}%`}
+            ></div>
+          </div>
+        </div>
+        <span class="text-sm font-medium text-gray-700">
+          {completionStats.completed}/{completionStats.total}
+        </span>
+      </div>
+    )}
+    
     <div class="flex gap-2">
       <button 
         id="linkExistingTaskBtn"
         class="px-3 py-1 bg-gray-100 text-gray-700 text-sm rounded hover:bg-gray-200"
       >
-        🔗 Vincular existente
+        🔗 Vincular
       </button>
       <a 
         href={`/tasks/create?entry_id=${entryId}&category_id=${categoryId}`}
@@ -72,7 +96,11 @@ if (taskCategory) {
   ) : (
     <div class="space-y-2">
       {applicableTasks.map((task: any) => (
-        <div class="flex items-start gap-3 p-3 border border-gray-200 rounded-lg hover:border-indigo-300">
+        <div class={`flex items-start gap-3 p-3 border rounded-lg transition ${
+          task.is_completed 
+            ? 'border-green-200 bg-green-50' 
+            : 'border-gray-200 hover:border-indigo-300'
+        }`}>
           <input 
             type="checkbox" 
             class="entry-task-checkbox mt-1 w-5 h-5 rounded"
@@ -83,7 +111,9 @@ if (taskCategory) {
           <div class="flex-1">
             <a 
               href={`/tasks/${task.id}`}
-              class={`font-medium hover:text-indigo-600 ${task.is_completed ? 'line-through text-gray-500' : 'text-gray-900'}`}
+              class={`font-medium hover:text-indigo-600 ${
+                task.is_completed ? 'line-through text-gray-500' : 'text-gray-900'
+              }`}
             >
               {task.data.title}
             </a>
@@ -92,7 +122,7 @@ if (taskCategory) {
                 {task.data.description.substring(0, 100)}
               </p>
             )}
-            <div class="flex items-center gap-2 mt-2 text-xs text-gray-500">
+            <div class="flex items-center gap-2 mt-2 text-xs">
               <span class={`px-2 py-0.5 rounded font-medium ${
                 task.data.priority === 'critical' ? 'bg-red-100 text-red-700' :
                 task.data.priority === 'high' ? 'bg-orange-100 text-orange-700' :
@@ -102,37 +132,32 @@ if (taskCategory) {
                 {task.data.priority}
               </span>
               {task.data.due_date && (
-                <span>📅 {new Date(task.data.due_date).toLocaleDateString('es-ES')}</span>
+                <span class="text-gray-500">
+                  📅 {new Date(task.data.due_date).toLocaleDateString('es-ES')}
+                </span>
               )}
             </div>
           </div>
+          
+          {/* BOTÓN DESVINCULAR */}
+          <button 
+            class="unlink-task text-gray-400 hover:text-red-600 transition"
+            data-task-id={task.id}
+            data-entry-id={entryId}
+            title="Desvincular tarea"
+          >
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+            </svg>
+          </button>
         </div>
       ))}
     </div>
   )}
 </div>
 
-<!-- Modal vincular tarea existente -->
-<div id="linkTaskModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-  <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
-    <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-      <h3 class="text-lg font-semibold text-gray-900">Vincular Tarea Existente</h3>
-      <button id="closeLinkModal" class="text-gray-400 hover:text-gray-600">
-        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-        </svg>
-      </button>
-    </div>
-    <div class="p-6">
-      <div id="availableTasksList" class="space-y-2">
-        <!-- Se cargará dinámicamente -->
-      </div>
-    </div>
-  </div>
-</div>
-
 <script define:vars={{ entryId, categoryId }}>
-  // Checkboxes de tareas
+  // Marcar tarea como completada/pendiente
   document.querySelectorAll('.entry-task-checkbox').forEach(checkbox => {
     checkbox.addEventListener('change', async (e) => {
       const target = e.target;
@@ -154,7 +179,6 @@ if (taskCategory) {
           target.checked = !isCompleted;
           alert('Error al actualizar');
         } else {
-          // Recargar para actualizar indicadores
           window.location.reload();
         }
       } catch (error) {
@@ -164,158 +188,48 @@ if (taskCategory) {
     });
   });
 
-  // Modal vincular tarea
-  const modal = document.getElementById('linkTaskModal');
-  const linkBtn = document.getElementById('linkExistingTaskBtn');
-  const closeBtn = document.getElementById('closeLinkModal');
-
-  linkBtn?.addEventListener('click', async () => {
-    modal?.classList.remove('hidden');
-    await loadAvailableTasks();
-  });
-
-  closeBtn?.addEventListener('click', () => {
-    modal?.classList.add('hidden');
-  });
-
-  async function loadAvailableTasks() {
-  try {
-    const response = await fetch(`/api/tasks?category_id=${categoryId}`);
-    const tasks = await response.json();
-    
-    const container = document.getElementById('availableTasksList');
-    if (!container) return;
-    
-    if (tasks.length === 0) {
-      container.innerHTML = `
-        <p class="text-sm text-gray-500 text-center py-8">
-          No hay tareas disponibles para esta categoría
-        </p>
-      `;
-      return;
-    }
-    
-    container.innerHTML = tasks.map((task) => {
-      // Verificar si ya está vinculada
-      const isLinked = task.data.applies_to_all || 
-                       (task.data.specific_entry_ids && task.data.specific_entry_ids.includes(entryId));
+  // Desvincular tarea
+  document.querySelectorAll('.unlink-task').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const target = e.currentTarget as HTMLElement;
+      const taskId = target.dataset.taskId!;
       
-      return `
-        <div class="flex items-center gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition">
-          <input 
-            type="checkbox" 
-            class="link-task-checkbox w-5 h-5 rounded"
-            data-task-id="${task.id}"
-            ${isLinked ? 'checked' : ''}
-            ${task.data.applies_to_all ? 'disabled title="Esta tarea aplica a todas las entradas"' : ''}
-          />
-          <div class="flex-1">
-            <p class="font-medium text-gray-900">${task.data.title}</p>
-            <div class="flex items-center gap-2 mt-1">
-              <span class="text-xs px-2 py-0.5 rounded ${
-                task.data.priority === 'critical' ? 'bg-red-100 text-red-700' :
-                task.data.priority === 'high' ? 'bg-orange-100 text-orange-700' :
-                task.data.priority === 'medium' ? 'bg-blue-100 text-blue-700' :
-                'bg-gray-100 text-gray-600'
-              }">
-                ${task.data.priority}
-              </span>
-              ${task.data.applies_to_all ? 
-                '<span class="text-xs text-purple-600">✨ Todas las entradas</span>' : 
-                task.data.specific_entry_ids && task.data.specific_entry_ids.length > 0 ?
-                `<span class="text-xs text-blue-600">🎯 ${task.data.specific_entry_ids.length} específica(s)</span>` :
-                '<span class="text-xs text-gray-500">Sin asignar</span>'
-              }
-            </div>
-          </div>
-        </div>
-      `;
-    }).join('');
-    
-    // Event listeners para checkboxes
-    container.querySelectorAll('.link-task-checkbox').forEach(cb => {
-      cb.addEventListener('change', async (e) => {
-        const checkbox = e.target;
-        const taskId = checkbox.dataset.taskId;
+      if (!confirm('¿Desvincular esta tarea de la entrada?')) return;
+      
+      try {
+        // Obtener tarea actual
+        const taskResponse = await fetch(`/api/entries?id=${taskId}`);
+        const task = await taskResponse.json();
+        const taskData = JSON.parse(task.data);
         
-        // Buscar la tarea en el array
-        const task = tasks.find((t) => t.id === taskId);
-        if (!task) return;
+        // Quitar entry_id de specific_entry_ids
+        let specificIds = taskData.specific_entry_ids || [];
+        specificIds = specificIds.filter((id: string) => id !== entryId);
         
-        // Crear nueva lista de IDs específicos
-        let newSpecificIds = task.data.specific_entry_ids || [];
+        const response = await fetch('/api/tasks', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: taskId,
+            specific_entry_ids: specificIds
+          })
+        });
         
-        if (checkbox.checked) {
-          // Añadir este entry si no está
-          if (!newSpecificIds.includes(entryId)) {
-            newSpecificIds.push(entryId);
-          }
-        } else {
-          // Quitar este entry
-          newSpecificIds = newSpecificIds.filter((id) => id !== entryId);
+        if (response.ok) {
+          target.closest('.flex')?.remove();
+          showToast('Tarea desvinculada');
         }
-        
-        try {
-          const response = await fetch(`/api/tasks`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              id: taskId,
-              specific_entry_ids: newSpecificIds
-            })
-          });
-          
-          if (response.ok) {
-            // Actualizar visualmente sin recargar
-            const badge = checkbox.closest('div')?.querySelector('.text-blue-600, .text-gray-500');
-            if (badge) {
-              if (newSpecificIds.length > 0) {
-                badge.textContent = `🎯 ${newSpecificIds.length} específica(s)`;
-                badge.className = 'text-xs text-blue-600';
-              } else {
-                badge.textContent = 'Sin asignar';
-                badge.className = 'text-xs text-gray-500';
-              }
-            }
-            
-            // Mostrar confirmación
-            showToast('Tarea vinculada correctamente');
-          } else {
-            checkbox.checked = !checkbox.checked;
-            alert('Error al vincular tarea');
-          }
-        } catch (error) {
-          console.error('Error:', error);
-          checkbox.checked = !checkbox.checked;
-          alert('Error de red');
-        }
-      });
+      } catch (error) {
+        alert('Error al desvincular');
+      }
     });
-    
-  } catch (error) {
-    console.error('Error loading tasks:', error);
-    const container = document.getElementById('availableTasksList');
-    if (container) {
-      container.innerHTML = `
-        <p class="text-sm text-red-500 text-center py-8">
-          Error al cargar tareas
-        </p>
-      `;
-    }
-  }
-}
+  });
 
-// Helper para mostrar notificaciones (opcional pero mejora UX)
-function showToast(message) {
-  const toast = document.createElement('div');
-  toast.className = 'fixed bottom-4 right-4 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg z-50 animate-fade-in';
-  toast.textContent = message;
-  document.body.appendChild(toast);
-  
-  setTimeout(() => {
-    toast.style.opacity = '0';
-    toast.style.transition = 'opacity 0.3s';
-    setTimeout(() => toast.remove(), 300);
-  }, 2000);
-}
+  function showToast(message: string) {
+    const toast = document.createElement('div');
+    toast.className = 'fixed bottom-4 right-4 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg z-50';
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 2000);
+  }
 </script>

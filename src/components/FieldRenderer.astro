@@ -1,5 +1,5 @@
 ---
-const { field, value } = Astro.props;
+const { field, value, db } = Astro.props;
 const isEmpty = value === undefined || value === null || value === '';
 const config = field.config ? JSON.parse(field.config) : {};
 ---
@@ -132,44 +132,64 @@ const config = field.config ? JSON.parse(field.config) : {};
     </textarea>
 )}
 
-{field.type === 'relation' && (
-  <div>
-    {(() => {
-      const config = JSON.parse(field.config || '{}');
-      const allowMultiple = config.allow_multiple;
+{field.type === 'relation' && (() => {
+  const config = JSON.parse(field.config || '{}');
+  const allowMultiple = config.allow_multiple;
+  const relatedCategoryId = config.related_category_id;
+  
+  if (!relatedCategoryId) {
+    return <p class="text-sm text-red-500">Error: categoría no configurada</p>;
+  }
+  
+  const relatedCategory = db.prepare('SELECT * FROM categories WHERE id = ?').get(relatedCategoryId);
+  
+  if (!relatedCategory) {
+    return <p class="text-sm text-red-500">Error: categoría no encontrada</p>;
+  }
+  
+  return (
+    <div class="relation-field-container" data-field-name={field.name}>
+      {/* Contenedor para badges de selección temporal (solo en create) */}
+      <div class="selected-badges flex flex-wrap gap-2 mb-2"></div>
       
-      // Cargar entradas de la categoría relacionada (esto se hace en el script)
-      return (
-        <div id={`relation-${field.name}`} data-field={field.name} data-category={config.related_category_id}>
-          {allowMultiple ? (
-            // Selector múltiple
-            <div>
-              <div class="flex flex-wrap gap-2 mb-2" id={`selected-${field.name}`}>
-                {/* Se llenará dinámicamente */}
-              </div>
-              <select 
-                class="relation-select w-full px-3 py-2 border border-gray-300 rounded-lg"
-                data-field={field.name}
-                data-multiple="true"
-              >
-                <option value="">Selecciona...</option>
-              </select>
-            </div>
-          ) : (
-            // Selector simple
-            <select 
-              class="relation-select editable-field w-full px-3 py-2 border border-gray-300 rounded-lg"
-              data-field={field.name}
-              data-type="relation"
-            >
-              <option value="">Selecciona...</option>
-            </select>
-          )}
-        </div>
-      );
-    })()}
-  </div>
-)}
+      {/* Select */}
+      <div class="flex gap-2">
+        <select 
+          class="relation-select flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+          data-field={field.name}
+          data-category={relatedCategoryId}
+          data-multiple={allowMultiple ? 'true' : 'false'}
+          name={allowMultiple ? undefined : field.name}
+        >
+          <option value="">
+            {allowMultiple ? '+ Añadir relación' : 'Selecciona...'}
+          </option>
+        </select>
+        
+        <a 
+          href={`/entries/${(relatedCategory as any).slug}`}
+          target="_blank"
+          class="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition text-sm flex items-center gap-2"
+          title={`Ver ${(relatedCategory as any).name}`}
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+          </svg>
+        </a>
+      </div>
+      
+      <p class="text-xs text-gray-500 mt-1">
+        Relacionado con: <strong>{(relatedCategory as any).name}</strong>
+        {allowMultiple && ' (múltiple)'}
+      </p>
+      
+      {/* Hidden input para enviar datos (solo múltiple) */}
+      {allowMultiple && (
+        <input type="hidden" name={field.name} value="[]" />
+      )}
+    </div>
+  );
+})()}
 
 <style>
   /* CSS adicional para controlar whitespace en textareas */

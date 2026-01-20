@@ -120,6 +120,46 @@ if (taskData.parent_task_id) {
           </div>
         )}
 
+        {taskData.specific_entry_ids && taskData.specific_entry_ids.length > 0 && (
+          <div>
+            <h3 class="font-semibold text-gray-900 mb-2">
+              Entradas vinculadas ({taskData.specific_entry_ids.length})
+            </h3>
+            <div class="space-y-2">
+              {taskData.specific_entry_ids.map((entryId: string) => {
+                const entry = db.prepare('SELECT * FROM entries WHERE id = ?').get(entryId) as any;
+                if (!entry) return null;
+                
+                const entryCategory = db.prepare('SELECT * FROM categories WHERE id = ?').get(entry.category_id) as any;
+                
+                return (
+                  <div class="flex items-center gap-3 p-3 border border-gray-200 rounded-lg hover:border-indigo-300">
+                    <div class="w-2 h-2 rounded-full" style={`background-color: ${entryCategory.color}`}></div>
+                    <div class="flex-1">
+                      <a 
+                        href={`/entries/${entryCategory.slug}/${entry.id}`}
+                        class="font-medium text-gray-900 hover:text-indigo-600"
+                      >
+                        {entry.title}
+                      </a>
+                      <p class="text-xs text-gray-500">{entryCategory.name}</p>
+                    </div>
+                    <button 
+                      class="unlink-entry text-gray-400 hover:text-red-600"
+                      data-entry-id={entry.id}
+                      title="Desvincular entrada"
+                    >
+                      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <!-- Metadata -->
         <div class="grid grid-cols-2 gap-4 pt-4 border-t">
           {taskData.due_date && (
@@ -337,6 +377,40 @@ if (taskData.parent_task_id) {
       } catch (error) {
         alert('Error al eliminar');
       }
+    });
+
+    document.querySelectorAll('.unlink-entry').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const target = e.currentTarget as HTMLElement;
+        const entryId = target.dataset.entryId!;
+        
+        if (!confirm('¿Desvincular esta entrada de la tarea?')) return;
+        
+        try {
+          // Obtener tarea actual
+          const response = await fetch(`/api/entries?id=${taskId}`);
+          const task = await response.json();
+          const taskData = JSON.parse(task.data);
+          
+          // Quitar entry_id
+          const specificIds = (taskData.specific_entry_ids || []).filter((id: string) => id !== entryId);
+          
+          const updateResponse = await fetch('/api/tasks', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              id: taskId,
+              specific_entry_ids: specificIds
+            })
+          });
+          
+          if (updateResponse.ok) {
+            window.location.reload();
+          }
+        } catch (error) {
+          alert('Error al desvincular');
+        }
+      });
     });
   </script>
 </body>
