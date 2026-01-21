@@ -12,6 +12,12 @@ if (!task) {
 
 const taskData = JSON.parse((task as any).data);
 
+const taskStatuses = db.prepare('SELECT * FROM task_statuses ORDER BY order_index').all();
+const currentStatusId = taskData.status_id || null;
+const currentStatus = currentStatusId 
+  ? db.prepare('SELECT * FROM task_statuses WHERE id = ?').get(currentStatusId)
+  : db.prepare('SELECT * FROM task_statuses WHERE is_default = 1').get();
+
 // Obtener categoría relacionada si existe
 let relatedCategory = null;
 if (taskData.related_category_id) {
@@ -68,12 +74,38 @@ if (taskData.parent_task_id) {
         <!-- Estado -->
         <div class="flex items-center gap-4">
           <label class="flex items-center gap-2">
-            <input 
-              type="checkbox" 
-              id="completedCheckbox"
-              checked={taskData.is_completed}
-              class="w-5 h-5 rounded"
-            />
+            <div class="flex items-center gap-4">
+              <div class="flex-1">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Estado</label>
+                <select 
+                  id="taskStatus"
+                  class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                  style={`border-left: 4px solid ${(currentStatus as any)?.color || '#9ca3af'}`}
+                >
+                  {taskStatuses.map((status: any) => (
+                    <option 
+                      value={status.id} 
+                      selected={status.id === (currentStatus as any)?.id}
+                      data-color={status.color}
+                    >
+                      {status.icon} {status.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              
+              <span class={`px-3 py-1 rounded text-sm font-medium ${
+                taskData.priority === 'critical' ? 'bg-red-100 text-red-700' :
+                taskData.priority === 'high' ? 'bg-orange-100 text-orange-700' :
+                taskData.priority === 'medium' ? 'bg-blue-100 text-blue-700' :
+                'bg-gray-100 text-gray-600'
+              }`}>
+                Prioridad: {taskData.priority === 'critical' ? '🔥 Crítica' :
+                          taskData.priority === 'high' ? '⬆️ Alta' :
+                          taskData.priority === 'medium' ? '➡️ Media' :
+                          '⬇️ Baja'}
+              </span>
+            </div>
             <span class="font-medium">Tarea completada</span>
           </label>
           
@@ -324,6 +356,32 @@ if (taskData.parent_task_id) {
       }
     });
 
+    document.getElementById('taskStatus')?.addEventListener('change', async (e) => {
+      const statusId = (e.target as HTMLSelectElement).value;
+      
+      try {
+        const response = await fetch('/api/tasks', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: taskId,
+            status_id: statusId
+          })
+        });
+        
+        if (response.ok) {
+          // Cambiar color del borde
+          const selectedOption = (e.target as HTMLSelectElement).selectedOptions[0];
+          const color = selectedOption.dataset.color;
+          (e.target as HTMLSelectElement).style.borderLeftColor = color || '#9ca3af';
+          
+          showToast('✅ Estado actualizado');
+        }
+      } catch (error) {
+        alert('Error al actualizar');
+      }
+    });
+
     document.getElementById('addCommentBtn')?.addEventListener('click', async () => {
       const input = document.getElementById('newComment') as HTMLInputElement;
       const text = input.value.trim();
@@ -412,6 +470,14 @@ if (taskData.parent_task_id) {
         }
       });
     });
+
+    function showToast(message: string) {
+      const toast = document.createElement('div');
+      toast.className = 'fixed bottom-4 right-4 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg z-50';
+      toast.textContent = message;
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 2000);
+    }
   </script>
 </body>
 </html>

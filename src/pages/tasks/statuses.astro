@@ -1,0 +1,147 @@
+---
+import { db } from '../../lib/db';
+
+const statuses = db.prepare('SELECT * FROM task_statuses ORDER BY order_index').all();
+---
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Configurar Estados de Tareas</title>
+</head>
+<body class="bg-gray-50 min-h-screen">
+  <header class="bg-white shadow-sm border-b border-gray-200">
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+      <a href="/tasks" class="text-sm text-gray-500 hover:text-gray-700">← Volver a tareas</a>
+      <h1 class="text-2xl font-bold text-gray-900 mt-1">Estados de Tareas</h1>
+      <p class="text-sm text-gray-500">Personaliza los estados del flujo de trabajo</p>
+    </div>
+  </header>
+
+  <main class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="bg-white rounded-lg shadow border border-gray-200 p-6 mb-6">
+      <h2 class="text-lg font-semibold text-gray-900 mb-4">Crear Estado Personalizado</h2>
+      <form id="createStatusForm" class="flex gap-3">
+        <input 
+          type="text" 
+          id="statusName"
+          placeholder="Nombre del estado"
+          class="flex-1 px-4 py-2 border border-gray-300 rounded-lg"
+          required
+        />
+        <input 
+          type="text" 
+          id="statusIcon"
+          placeholder="Emoji"
+          class="w-20 px-4 py-2 border border-gray-300 rounded-lg text-center"
+          maxlength="2"
+        />
+        <input 
+          type="color" 
+          id="statusColor"
+          value="#6b7280"
+          class="w-16 h-10 border border-gray-300 rounded-lg cursor-pointer"
+        />
+        <button type="submit" class="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
+          Crear
+        </button>
+      </form>
+    </div>
+
+    <div class="bg-white rounded-lg shadow border border-gray-200">
+      <div class="px-6 py-4 border-b border-gray-200">
+        <h2 class="text-lg font-semibold text-gray-900">Estados Actuales</h2>
+      </div>
+      <div id="statusList" class="divide-y divide-gray-200">
+        {statuses.map((status: any) => (
+          <div class="p-4 flex items-center gap-4 hover:bg-gray-50">
+            <div class="flex-shrink-0">
+              <div 
+                class="w-12 h-12 rounded-lg flex items-center justify-center text-2xl"
+                style={`background-color: ${status.color}20; color: ${status.color}`}
+              >
+                {status.icon}
+              </div>
+            </div>
+            <div class="flex-1">
+              <h3 class="font-semibold text-gray-900">{status.name}</h3>
+              <p class="text-xs text-gray-500">{status.slug}</p>
+            </div>
+            <div class="flex items-center gap-2">
+              {status.is_default === 1 && (
+                <span class="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded">Por defecto</span>
+              )}
+              {status.is_final === 1 && (
+                <span class="px-2 py-1 bg-green-100 text-green-700 text-xs rounded">Final</span>
+              )}
+              {status.is_default === 0 && (
+                <button 
+                  class="delete-status text-red-600 hover:text-red-800"
+                  data-id={status.id}
+                  data-name={status.name}
+                >
+                  Eliminar
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  </main>
+
+  <script>
+    // Crear estado
+    document.getElementById('createStatusForm')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const name = (document.getElementById('statusName') as HTMLInputElement).value;
+      const icon = (document.getElementById('statusIcon') as HTMLInputElement).value;
+      const color = (document.getElementById('statusColor') as HTMLInputElement).value;
+      
+      try {
+        const response = await fetch('/api/task-statuses', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, icon, color })
+        });
+        
+        if (response.ok) {
+          window.location.reload();
+        }
+      } catch (error) {
+        alert('Error al crear estado');
+      }
+    });
+
+    // Eliminar estado
+    document.querySelectorAll('.delete-status').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = (btn as HTMLElement).dataset.id;
+        const name = (btn as HTMLElement).dataset.name;
+        
+        if (!confirm(`¿Eliminar el estado "${name}"?`)) return;
+        
+        try {
+          const response = await fetch('/api/task-statuses', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id })
+          });
+          
+          if (response.ok) {
+            window.location.reload();
+          } else {
+            const error = await response.json();
+            alert(error.error);
+          }
+        } catch (error) {
+          alert('Error al eliminar');
+        }
+      });
+    });
+  </script>
+</body>
+</html>

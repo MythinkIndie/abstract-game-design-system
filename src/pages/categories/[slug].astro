@@ -1,6 +1,6 @@
 ---
 // src/pages/categories/[slug].astro
-import { db } from '../../lib/db';
+import { db } from '@/lib/db';
 
 const { slug } = Astro.params;
 
@@ -387,27 +387,35 @@ const entryCount = db.prepare('SELECT COUNT(*) as count FROM entries WHERE categ
       });
     });
 
-   document.getElementById('addFieldBtn')?.addEventListener('click', async () => {
-  modal?.classList.remove('hidden');
-  
-  // Cargar categorías disponibles para relaciones
-  try {
-    const response = await fetch('/api/categories');
-    const categories = await response.json();
-    
-    const select = document.getElementById('relationCategory') as HTMLSelectElement;
-    if (select) {
-      select.innerHTML = '<option value="">Selecciona una categoría...</option>' +
-        categories
-          .filter((cat: any) => !cat.is_system) // Filtrar solo categorías custom
-          .map((cat: any) => 
-            `<option value="${cat.id}">${cat.name}</option>`
-          ).join('');
-    }
-  } catch (error) {
-    console.error('Error loading categories:', error);
-  }
-});
+    document.getElementById('addFieldBtn')?.addEventListener('click', async () => {
+      modal?.classList.remove('hidden');
+      
+      try {
+        const response = await fetch('/api/categories');
+        const categories = await response.json();
+        
+        const select = document.getElementById('relationCategory') as HTMLSelectElement;
+        if (select) {
+          select.innerHTML = '<option value="">Selecciona una categoría...</option>';
+          
+          categories.forEach((cat: any) => {
+            // Permitir todas las categorías, incluida la actual
+            const option = document.createElement('option');
+            option.value = cat.id;
+            option.textContent = cat.name;
+            
+            // Marcar si es la categoría actual (opcional, para dar contexto)
+            if (cat.id === categoryId) {
+              option.textContent = `${cat.name} (esta categoría)`;
+            }
+            
+            select.appendChild(option);
+          });
+        }
+      } catch (error) {
+        console.error('Error loading categories:', error);
+      }
+    });
 
 // Mostrar/ocultar configuración de relación según el tipo
 document.getElementById('fieldType')?.addEventListener('change', (e) => {
@@ -453,7 +461,7 @@ document.getElementById('fieldForm')?.addEventListener('submit', async (e) => {
     
     if (!relatedCategoryId) {
       alert('Debes seleccionar una categoría relacionada');
-      return;
+      return; // Detener aquí, no hacer la petición
     }
     
     config = {
@@ -465,6 +473,12 @@ document.getElementById('fieldForm')?.addEventListener('submit', async (e) => {
   else if (type === 'enum') {
     const optionsInput = document.getElementById('enumOptions') as HTMLInputElement;
     const options = optionsInput?.value.split(',').map(s => s.trim()).filter(Boolean) || [];
+    
+    if (options.length === 0) {
+      alert('Debes añadir al menos una opción para un campo enum');
+      return;
+    }
+    
     config = { options };
   }
   
@@ -477,8 +491,11 @@ document.getElementById('fieldForm')?.addEventListener('submit', async (e) => {
     required: (document.getElementById('fieldRequired') as HTMLInputElement).checked,
     unique_value: (document.getElementById('fieldUnique') as HTMLInputElement).checked,
     config: config,
-    field_order: 999 // Se ordenará al final
+    field_order: 999
   };
+  
+  // Validación final antes de enviar
+  console.log('Enviando campo:', data);
   
   try {
     const response = await fetch('/api/fields', {
@@ -487,15 +504,18 @@ document.getElementById('fieldForm')?.addEventListener('submit', async (e) => {
       body: JSON.stringify(data)
     });
     
+    const result = await response.json();
+    
     if (response.ok) {
+      console.log('✅ Campo creado exitosamente');
       window.location.reload();
     } else {
-      const error = await response.json();
-      alert('Error: ' + error.error);
+      console.error('❌ Error del servidor:', result);
+      alert('Error al crear el campo: ' + result.error);
     }
   } catch (error) {
-    console.error('Error:', error);
-    alert('Error al crear el campo');
+    console.error('❌ Error de red:', error);
+    alert('Error al crear el campo. Verifica la consola.');
   }
 });
 

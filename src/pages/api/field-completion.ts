@@ -1,6 +1,6 @@
 // src/pages/api/field-completion.ts
 import type { APIRoute } from 'astro';
-import { db } from '../../lib/db';
+import { db } from '@/lib/db';
 import { nanoid } from 'nanoid';
 
 // GET - Obtener estado de completitud de campos de una entrada

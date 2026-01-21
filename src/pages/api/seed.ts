@@ -1,18 +1,19 @@
 // src/pages/api/seed.ts
 import type { APIRoute } from 'astro';
-import { initializeDatabase, seedDatabase } from '../../lib/seed';
+import { initializeDatabase, seedDatabase } from '@/lib/seed';
 
 export const GET: APIRoute = async () => {
+
   try {
-    
-    initializeDatabase();
+
+    await initializeDatabase();
     
     const result = await seedDatabase();
     
     return new Response(JSON.stringify({
       success: true,
       message: 'Database initialized and seeded',
-      dbPath: /*result.dbPath ||*/ 'data/game-design.db',
+      dbPath: 'data/game-design.db',
       categories: result.categories
     }), {
       status: 200,

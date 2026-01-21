@@ -1,5 +1,5 @@
 ---
-const { field, value, db } = Astro.props;
+const { field, value, db, parentCategory } = Astro.props;
 const isEmpty = value === undefined || value === null || value === '';
 const config = field.config ? JSON.parse(field.config) : {};
 ---
@@ -138,28 +138,91 @@ const config = field.config ? JSON.parse(field.config) : {};
   const relatedCategoryId = config.related_category_id;
   
   if (!relatedCategoryId) {
-    return <p class="text-sm text-red-500">Error: categoría no configurada</p>;
+    return (
+      <div class="p-3 bg-red-50 border border-red-200 rounded-lg">
+        <p class="text-sm text-red-700">⚠️ Error: Campo sin categoría configurada</p>
+      </div>
+    );
   }
   
   const relatedCategory = db.prepare('SELECT * FROM categories WHERE id = ?').get(relatedCategoryId);
   
   if (!relatedCategory) {
-    return <p class="text-sm text-red-500">Error: categoría no encontrada</p>;
+    return (
+      <div class="p-3 bg-red-50 border border-red-200 rounded-lg">
+        <p class="text-sm text-red-700">⚠️ Error: Categoría no existe</p>
+      </div>
+    );
   }
+  
+  // Detectar si es una auto-relación
+  const isSelfRelation = relatedCategoryId === (parentCategory as any).id;
   
   return (
     <div class="relation-field-container" data-field-name={field.name}>
-      {/* Contenedor para badges de selección temporal (solo en create) */}
-      <div class="selected-badges flex flex-wrap gap-2 mb-2"></div>
+      {/* Mostrar relaciones actuales */}
+      {value && (Array.isArray(value) ? value.length > 0 : value) && (
+        <div class="flex flex-wrap gap-2 mb-3">
+          {(Array.isArray(value) ? value : [value]).map((relatedId: string) => {
+            const relatedEntry = db.prepare('SELECT * FROM entries WHERE id = ?').get(relatedId);
+            
+            if (!relatedEntry) {
+              return (
+                <div class="inline-flex items-center gap-2 px-3 py-2 bg-red-50 border border-red-200 rounded-lg">
+                  <span class="text-xs text-red-700">⚠️ Eliminada</span>
+                  <button 
+                    class="remove-relation text-red-600 hover:text-red-800"
+                    data-field={field.name}
+                    data-id={relatedId}
+                    type="button"
+                  >×</button>
+                </div>
+              );
+            }
+            
+            return (
+              <div class="inline-flex items-center gap-2 px-3 py-2 bg-white border-2 border-indigo-200 rounded-lg group hover:border-indigo-400 transition">
+                <div 
+                  class="w-3 h-3 rounded-full flex-shrink-0" 
+                  style={`background-color: ${(relatedCategory as any).color}`}
+                ></div>
+                <div class="flex flex-col">
+                  <a 
+                    href={`/entries/${(relatedCategory as any).slug}/${relatedId}`}
+                    class="font-medium text-gray-900 hover:text-indigo-600 text-sm"
+                    target="_blank"
+                  >
+                    {(relatedEntry as any).title}
+                  </a>
+                  {isSelfRelation && (
+                    <span class="text-xs text-gray-500">{(relatedCategory as any).name}</span>
+                  )}
+                </div>
+                <button 
+                  class="remove-relation opacity-0 group-hover:opacity-100 text-red-600 hover:text-red-800 transition ml-2 flex-shrink-0"
+                  data-field={field.name}
+                  data-id={relatedId}
+                  type="button"
+                  title="Eliminar relación"
+                >
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
       
-      {/* Select */}
+      {/* Select - excluir la entrada actual en auto-relaciones */}
       <div class="flex gap-2">
         <select 
           class="relation-select flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
           data-field={field.name}
           data-category={relatedCategoryId}
           data-multiple={allowMultiple ? 'true' : 'false'}
-          name={allowMultiple ? undefined : field.name}
+          data-self-relation={isSelfRelation ? 'true' : 'false'}
         >
           <option value="">
             {allowMultiple ? '+ Añadir relación' : 'Selecciona...'}
@@ -170,7 +233,7 @@ const config = field.config ? JSON.parse(field.config) : {};
           href={`/entries/${(relatedCategory as any).slug}`}
           target="_blank"
           class="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition text-sm flex items-center gap-2"
-          title={`Ver ${(relatedCategory as any).name}`}
+          title={`Ver todas las entradas de ${(relatedCategory as any).name}`}
         >
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
@@ -178,15 +241,14 @@ const config = field.config ? JSON.parse(field.config) : {};
         </a>
       </div>
       
-      <p class="text-xs text-gray-500 mt-1">
-        Relacionado con: <strong>{(relatedCategory as any).name}</strong>
+      <p class="text-xs text-gray-500 mt-2">
+        {isSelfRelation ? (
+          <span>🔄 Auto-relación con <strong>{(relatedCategory as any).name}</strong></span>
+        ) : (
+          <span>Relacionado con: <strong>{(relatedCategory as any).name}</strong></span>
+        )}
         {allowMultiple && ' (múltiple)'}
       </p>
-      
-      {/* Hidden input para enviar datos (solo múltiple) */}
-      {allowMultiple && (
-        <input type="hidden" name={field.name} value="[]" />
-      )}
     </div>
   );
 })()}

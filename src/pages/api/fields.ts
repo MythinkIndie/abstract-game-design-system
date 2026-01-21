@@ -1,6 +1,5 @@
-// src/pages/api/fields.ts
 import type { APIRoute } from 'astro';
-import { db } from '../../lib/db';
+import db from '@/lib/db';
 import { nanoid } from 'nanoid';
 
 // GET - Obtener campos de una categoría
@@ -39,6 +38,7 @@ export const POST: APIRoute = async ({ request }) => {
     const body = await request.json();
     const { category_id, name, label, type, required, unique_value, config, field_order, help_text } = body;
     
+    // Validación básica
     if (!category_id || !name || !label || !type) {
       return new Response(JSON.stringify({ 
         error: 'category_id, name, label, and type are required' 
@@ -48,7 +48,48 @@ export const POST: APIRoute = async ({ request }) => {
       });
     }
     
+    // Validación especial para campos de relación
+    if (type === 'relation') {
+      const configObj = typeof config === 'string' ? JSON.parse(config) : config;
+      
+      if (!configObj.related_category_id) {
+        return new Response(JSON.stringify({ 
+          error: 'Campos de tipo "relation" requieren related_category_id en config' 
+        }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      
+      // Verificar que la categoría relacionada existe
+      const relatedCategory = db.prepare('SELECT id FROM categories WHERE id = ?').get(configObj.related_category_id);
+      
+      if (!relatedCategory) {
+        return new Response(JSON.stringify({ 
+          error: 'La categoría relacionada no existe' 
+        }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+    }
+    
     const id = nanoid();
+    
+    // Asegurar que config sea un string JSON válido
+    let configStr: string;
+    if (typeof config === 'string') {
+      try {
+        JSON.parse(config); // Validar que sea JSON válido
+        configStr = config;
+      } catch {
+        configStr = JSON.stringify({});
+      }
+    } else if (typeof config === 'object' && config !== null) {
+      configStr = JSON.stringify(config);
+    } else {
+      configStr = JSON.stringify({});
+    }
     
     const stmt = db.prepare(`
       INSERT INTO fields (id, category_id, name, label, type, required, unique_value, config, field_order, help_text)
@@ -63,7 +104,7 @@ export const POST: APIRoute = async ({ request }) => {
       type,
       required ? 1 : 0,
       unique_value ? 1 : 0,
-      typeof config === 'string' ? config : JSON.stringify(config || {}),
+      configStr,
       field_order || 0,
       help_text || ''
     );
@@ -75,8 +116,10 @@ export const POST: APIRoute = async ({ request }) => {
       headers: { 'Content-Type': 'application/json' }
     });
   } catch (error) {
+    console.error('Error creating field:', error);
     return new Response(JSON.stringify({ 
-      error: error instanceof Error ? error.message : 'Unknown error' 
+      error: error instanceof Error ? error.message : 'Unknown error',
+      details: error instanceof Error ? error.stack : undefined
     }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' }

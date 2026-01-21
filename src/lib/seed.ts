@@ -1,5 +1,5 @@
 // src/lib/seed.ts
-import db from './db';
+import { db } from './db';
 import { nanoid } from 'nanoid';
 
 export function initializeDatabase() {
@@ -171,7 +171,7 @@ export function seedDatabase() {
   insertField.run(nanoid(), metaId, 'project_name', 'Nombre del Proyecto', 'text', 1, 1, JSON.stringify({ max_length: 100 }), 1, 'Nombre oficial del videojuego');
   insertField.run(nanoid(), metaId, 'version', 'Versión', 'text', 1, 0, JSON.stringify({ placeholder: '0.1.0' }), 2, 'Versión del GDD');
   insertField.run(nanoid(), metaId, 'authors', 'Autores', 'list', 0, 0, JSON.stringify({ item_type: 'text' }), 3, 'Diseñadores del juego');
-  insertField.run(nanoid(), metaId, 'description', 'Descripción', 'markdown', 0, 0, JSON.stringify({}), 4, 'Descripción general del proyecto');
+  insertField.run(nanoid(), metaId, 'meta_description', 'Descripción del Metadato', 'markdown', 0, 0, JSON.stringify({}), 4, 'Descripción general del proyecto');
   insertField.run(nanoid(), metaId, 'tags', 'Etiquetas', 'list', 0, 0, JSON.stringify({ item_type: 'text' }), 5, 'Etiquetas para clasificación');
 
   // ========================================
@@ -183,16 +183,16 @@ export function seedDatabase() {
   insertField.run(nanoid(), systemId, 'enabled', 'Habilitada', 'boolean', 1, 0, JSON.stringify({ default: true }), 3, '¿Está activa esta regla?');
   insertField.run(nanoid(), systemId, 'priority', 'Prioridad', 'number', 0, 0, JSON.stringify({ min: 0, max: 100, default: 50 }), 4, 'Orden de ejecución');
   insertField.run(nanoid(), systemId, 'config', 'Configuración', 'json', 0, 0, JSON.stringify({}), 5, 'Configuración específica en JSON');
-  insertField.run(nanoid(), systemId, 'description', 'Descripción', 'markdown', 0, 0, JSON.stringify({}), 6, 'Documentación de la regla');
+  insertField.run(nanoid(), systemId, 'system_description', 'Descripción del Sistema', 'markdown', 0, 0, JSON.stringify({}), 6, 'Documentación de la regla');
 
   // ========================================
   // CAMPOS DE ENTITY (HEREDADOS)
   // ========================================
   
   insertField.run(nanoid(), entityId, 'title', 'Título', 'text', 1, 0, JSON.stringify({ max_length: 200 }), 1, 'Nombre de la entidad');
-  insertField.run(nanoid(), entityId, 'description', 'Descripción', 'markdown', 0, 0, JSON.stringify({}), 2, 'Descripción extensa');
+  insertField.run(nanoid(), entityId, 'entity_description', 'Descripción del Markdown', 'markdown', 0, 0, JSON.stringify({}), 2, 'Descripción extensa');
   insertField.run(nanoid(), entityId, 'status', 'Estado', 'enum', 1, 0, JSON.stringify({ options: ['draft', 'review', 'approved', 'deprecated'], default: 'draft' }), 3, 'Estado del diseño');
-  insertField.run(nanoid(), entityId, 'tags', 'Etiquetas', 'list', 0, 0, JSON.stringify({ item_type: 'text' }), 4, 'Etiquetas para búsqueda');
+  insertField.run(nanoid(), entityId, 'entity_tags', 'Etiquetas', 'list', 0, 0, JSON.stringify({ item_type: 'text' }), 4, 'Etiquetas para búsqueda');
 
   // ========================================
   // ENTRADA META INICIAL

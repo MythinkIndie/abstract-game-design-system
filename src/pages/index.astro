@@ -1,7 +1,7 @@
 ---
 // src/pages/index.astro (ACTUALIZADO)
-import GlobalSearch from '../components/GlobalSearch.astro';
-import { db } from '../lib/db';
+import GlobalSearch from '@/components/GlobalSearch.astro';
+import { db } from '@/lib/db';
 
 // Obtener estadísticas
 const categories = db.prepare('SELECT COUNT(*) as count FROM categories WHERE is_system = 0').get() as { count: number };
