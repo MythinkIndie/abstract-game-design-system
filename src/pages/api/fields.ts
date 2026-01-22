@@ -34,6 +34,7 @@ export const GET: APIRoute = async ({ url }) => {
 
 // POST - Crear nuevo campo
 export const POST: APIRoute = async ({ request }) => {
+
   try {
     const body = await request.json();
     const { category_id, name, label, type, required, unique_value, config, field_order, help_text } = body;
@@ -50,23 +51,35 @@ export const POST: APIRoute = async ({ request }) => {
     
     // Validación especial para campos de relación
     if (type === 'relation') {
-      const configObj = typeof config === 'string' ? JSON.parse(config) : config;
-      
-      if (!configObj.related_category_id) {
-        return new Response(JSON.stringify({ 
-          error: 'Campos de tipo "relation" requieren related_category_id en config' 
+      let configObj: any;
+
+      try {
+        configObj = typeof config === 'string' ? JSON.parse(config) : config;
+      } catch {
+        return new Response(JSON.stringify({
+          error: 'Config inválido para campo de tipo relation'
         }), {
           status: 400,
           headers: { 'Content-Type': 'application/json' }
         });
       }
-      
-      // Verificar que la categoría relacionada existe
-      const relatedCategory = db.prepare('SELECT id FROM categories WHERE id = ?').get(configObj.related_category_id);
-      
+
+      if (!configObj?.related_category_id) {
+        return new Response(JSON.stringify({
+          error: 'Campos de tipo "relation" requieren related_category_id en config'
+        }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      const relatedCategory = db
+        .prepare('SELECT id FROM categories WHERE id = ?')
+        .get(configObj.related_category_id);
+
       if (!relatedCategory) {
-        return new Response(JSON.stringify({ 
-          error: 'La categoría relacionada no existe' 
+        return new Response(JSON.stringify({
+          error: 'La categoría relacionada no existe'
         }), {
           status: 400,
           headers: { 'Content-Type': 'application/json' }
@@ -78,9 +91,11 @@ export const POST: APIRoute = async ({ request }) => {
     
     // Asegurar que config sea un string JSON válido
     let configStr: string;
-    if (typeof config === 'string') {
+    if (config === null) {
+      configStr = JSON.stringify({});
+    } else if (typeof config === 'string') {
       try {
-        JSON.parse(config); // Validar que sea JSON válido
+        JSON.parse(config);
         configStr = config;
       } catch {
         configStr = JSON.stringify({});

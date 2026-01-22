@@ -1,68 +1,110 @@
 import { db } from '@/lib/db';
 import { nanoid } from 'nanoid';
 
-export function addTaskStatusSystem() {
-  const now = new Date().toISOString();
+export function addTaskStatusFields() {
+  console.log('📝 Agregando campos de estado y asignación a tareas...');
   
-  // Tabla de estados personalizados
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS task_statuses (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL UNIQUE,
-      slug TEXT NOT NULL UNIQUE,
-      color TEXT NOT NULL,
-      icon TEXT,
-      order_index INTEGER DEFAULT 0,
-      is_default INTEGER DEFAULT 0,
-      is_final INTEGER DEFAULT 0,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP
-    )
+  const taskCategory = db.prepare('SELECT id FROM categories WHERE slug = ?').get('task') as any;
+  
+  if (!taskCategory) {
+    console.error('⚠️  Categoría Task no encontrada');
+    return { success: false, message: 'Task category not found' };
+  }
+  
+  // Verificar si ya existen los campos
+  const statusField = db.prepare('SELECT id FROM fields WHERE category_id = ? AND name = ?')
+    .get(taskCategory.id, 'status');
+  
+  const assignedField = db.prepare('SELECT id FROM fields WHERE category_id = ? AND name = ?')
+    .get(taskCategory.id, 'assigned_to');
+  
+  if (statusField && assignedField) {
+    console.log('✅ Los campos ya existen, actualizando...');
+  }
+  
+  const insertField = db.prepare(`
+    INSERT OR REPLACE INTO fields (id, category_id, name, label, type, required, unique_value, config, field_order, help_text)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   
-  // Verificar si ya existen estados
-  const existingStatuses = db.prepare('SELECT COUNT(*) as count FROM task_statuses').get() as any;
-  
-  if (existingStatuses.count === 0) {
-    // Insertar estados por defecto
-    const defaultStatuses = [
-      { name: 'Sin empezar', slug: 'not_started', color: '#9ca3af', icon: '⭕', order: 0, isDefault: 1, isFinal: 0 },
-      { name: 'En progreso', slug: 'in_progress', color: '#3b82f6', icon: '🔄', order: 1, isDefault: 0, isFinal: 0 },
-      { name: 'Bloqueado', slug: 'blocked', color: '#ef4444', icon: '🚫', order: 2, isDefault: 0, isFinal: 0 },
-      { name: 'En revisión', slug: 'in_review', color: '#f59e0b', icon: '👀', order: 3, isDefault: 0, isFinal: 0 },
-      { name: 'Completado', slug: 'completed', color: '#10b981', icon: '✅', order: 4, isDefault: 0, isFinal: 1 }
-    ];
-    
-    const insertStatus = db.prepare(`
-      INSERT INTO task_statuses (id, name, slug, color, icon, order_index, is_default, is_final, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    
-    defaultStatuses.forEach(status => {
-      insertStatus.run(
-        nanoid(),
-        status.name,
-        status.slug,
-        status.color,
-        status.icon,
-        status.order,
-        status.isDefault,
-        status.isFinal,
-        now
-      );
-    });
+  // Campo de estado
+  if (!statusField) {
+    insertField.run(
+      nanoid(),
+      taskCategory.id,
+      'status',
+      'Estado',
+      'enum',
+      1,
+      0,
+      JSON.stringify({
+        options: ['todo', 'in_progress', 'done', 'blocked'],
+        default: 'todo'
+      }),
+      3, // Después de is_completed
+      'Estado actual de la tarea'
+    );
+    console.log('  ✓ Campo "status" creado');
   }
   
-  // Añadir columna status_id a entries (si no existe)
-  try {
-    db.exec(`ALTER TABLE entries ADD COLUMN status_id TEXT`);
-  } catch (e) {
-    // La columna ya existe
+  // Campo de persona asignada
+  if (!assignedField) {
+    insertField.run(
+      nanoid(),
+      taskCategory.id,
+      'assigned_to',
+      'Asignado a',
+      'text',
+      0,
+      0,
+      JSON.stringify({ placeholder: 'Nombre de la persona' }),
+      12, // Al final
+      'Persona responsable de esta tarea'
+    );
+    console.log('  ✓ Campo "assigned_to" creado');
   }
   
-  // Índice
-  db.exec(`CREATE INDEX IF NOT EXISTS idx_entries_status ON entries(status_id)`);
+  // Actualizar tareas existentes para agregar status=todo si no lo tienen
+  const allTasks = db.prepare('SELECT id, data FROM entries WHERE category_id = ?')
+    .all(taskCategory.id) as any[];
   
-  console.log('✅ Sistema de estados de tareas inicializado');
+  let updated = 0;
+  allTasks.forEach((task: any) => {
+    try {
+      const data = JSON.parse(task.data);
+      let needsUpdate = false;
+      
+      if (!data.status) {
+        data.status = 'todo';
+        needsUpdate = true;
+      }
+      
+      if (!data.assigned_to) {
+        data.assigned_to = '';
+        needsUpdate = true;
+      }
+      
+      if (needsUpdate) {
+        db.prepare('UPDATE entries SET data = ? WHERE id = ?')
+          .run(JSON.stringify(data), task.id);
+        updated++;
+      }
+    } catch (error) {
+      console.error(`Error actualizando tarea ${task.id}:`, error);
+    }
+  });
   
-  return { success: true };
+  console.log(`  ✓ ${updated} tareas actualizadas con campos por defecto`);
+  console.log('✅ Migración completada');
+  
+  return {
+    success: true,
+    message: 'Task status and assigned_to fields added successfully',
+    updated_tasks: updated
+  };
+}
+
+// Ejecutar si se llama directamente
+if (import.meta.url === `file://${process.argv[1]}`) {
+  addTaskStatusFields();
 }

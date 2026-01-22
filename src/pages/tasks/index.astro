@@ -17,9 +17,10 @@ function getSubtasksRecursive(parentId: string, level: number = 1): any[] {
   
   return subtasks.flatMap(task => {
     const data = JSON.parse(task.data);
+    const children = getSubtasksRecursive(task.id, level + 1);
     return [
       { ...task, data, level },
-      ...getSubtasksRecursive(task.id, level + 1)
+      ...children
     ];
   });
 }
@@ -57,6 +58,13 @@ if (taskCategory) {
     .task-level-2 { padding-left: 4rem; }
     .task-level-3 { padding-left: 6rem; }
     .task-level-4 { padding-left: 8rem; }
+    .task-level-5 { padding-left: 10rem; }
+    .task-level-6 { padding-left: 12rem; }
+
+    .status-todo { border-left: 4px solid #6b7280; }
+    .status-in-progress { border-left: 4px solid #3b82f6; }
+    .status-done { border-left: 4px solid #10b981; }
+    .status-blocked { border-left: 4px solid #ef4444; }
   </style>
 </head>
 <body class="bg-gray-50 min-h-screen">
@@ -75,7 +83,7 @@ if (taskCategory) {
           <a href="/tasks/create" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition">
             + Nueva Tarea
           </a>
-          <a href="/tasks/statuses" class="text-sm text-gray-600 hover:text-gray-900">
+          <a href="/tasks/statuses" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition">
             ⚙️ Configurar Estados
           </a>
         </div>
@@ -84,6 +92,40 @@ if (taskCategory) {
   </header>
 
   <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <!-- Filtros -->
+    <div class="bg-white rounded-lg shadow border border-gray-200 p-4 mb-6">
+      <div class="flex flex-wrap gap-4">
+        <div class="flex-1 min-w-[200px]">
+          <label class="block text-xs font-medium text-gray-600 mb-1">Filtrar por categoría</label>
+          <select id="categoryFilter" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+            <option value="">Todas las categorías</option>
+            {categories.map((cat: any) => (
+              <option value={cat.id}>{cat.name}</option>
+            ))}
+          </select>
+        </div>
+        <div class="flex-1 min-w-[200px]">
+          <label class="block text-xs font-medium text-gray-600 mb-1">Filtrar por estado</label>
+          <select id="statusFilter" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+            <option value="">Todos los estados</option>
+            <option value="todo">📝 Por Hacer</option>
+            <option value="in_progress">🔄 En Progreso</option>
+            <option value="done">✅ Completado</option>
+            <option value="blocked">🚫 Bloqueado</option>
+          </select>
+        </div>
+        <div class="flex-1 min-w-[200px]">
+          <label class="block text-xs font-medium text-gray-600 mb-1">Buscar</label>
+          <input 
+            type="text" 
+            id="searchInput"
+            placeholder="Buscar tareas..."
+            class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+          />
+        </div>
+      </div>
+    </div>
+
     {!taskCategory ? (
       <div class="bg-white rounded-lg shadow border border-gray-200 p-12 text-center">
         <svg class="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -91,224 +133,198 @@ if (taskCategory) {
         </svg>
         <h3 class="text-lg font-semibold text-gray-900 mb-2">Sistema de Tareas No Inicializado</h3>
         <p class="text-gray-500 mb-6">Ejecuta la migración para activar el sistema de tareas</p>
-        <a href="/api/tasks/migrate-v2" class="inline-block px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition font-medium">
+        <a href="/api/tasks/migrate" class="inline-block px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition font-medium">
           Activar Sistema de Tareas
         </a>
       </div>
     ) : (
-      <div class="space-y-6">
-        <!-- Filtros -->
-        <div class="bg-white rounded-lg shadow border border-gray-200 p-4">
-          <div class="flex flex-wrap gap-4">
-            <div class="flex-1 min-w-[200px]">
-              <label class="block text-xs font-medium text-gray-600 mb-1">Filtrar por categoría</label>
-              <select id="categoryFilter" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
-                <option value="">Todas las categorías</option>
-                {categories.map((cat: any) => (
-                  <option value={cat.id}>{cat.name}</option>
-                ))}
-              </select>
-            </div>
-            <div class="flex-1 min-w-[200px]">
-              <label class="block text-xs font-medium text-gray-600 mb-1">Buscar</label>
-              <input 
-                type="text" 
-                id="searchInput"
-                placeholder="Buscar tareas..."
-                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-              />
-            </div>
-            <div class="flex items-end gap-2">
-              <label class="flex items-center gap-2">
-                <input type="checkbox" id="hideCompleted" class="rounded" />
-                <span class="text-sm text-gray-600">Ocultar completadas</span>
-              </label>
-            </div>
-          </div>
+      <div class="bg-white rounded-lg shadow border border-gray-200">
+        <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+          <h2 class="text-lg font-semibold text-gray-900">Lista de Tareas</h2>
+          <span class="text-sm text-gray-500">{tasks.length} tareas</span>
         </div>
 
-        <!-- Lista de Tareas -->
-        <div class="bg-white rounded-lg shadow border border-gray-200">
-          <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-            <h2 class="text-lg font-semibold text-gray-900">Lista de Tareas</h2>
-            <span class="text-sm text-gray-500">{tasks.length} tareas</span>
+        {tasks.length === 0 ? (
+          <div class="p-12 text-center">
+            <p class="text-gray-500 mb-4">No hay tareas creadas</p>
+            <a href="/tasks/create" class="inline-block px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition">
+              Crear Primera Tarea
+            </a>
           </div>
-
-          {tasks.length === 0 ? (
-            <div class="p-12 text-center">
-              <p class="text-gray-500 mb-4">No hay tareas creadas</p>
-              <a href="/tasks/create" class="inline-block px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition">
-                Crear Primera Tarea
-              </a>
-            </div>
-          ) : (
-            <div class="divide-y divide-gray-200">
-  {tasks.map((task: any) => (
-    <div 
-      class={`task-row group py-5 px-6 hover:bg-gray-50 transition border-l-4 ${
-        task.level === 0 
-          ? 'border-indigo-500 bg-white' 
-          : 'border-gray-300 bg-gray-50 ml-8'
-      } ${task.data.is_completed ? 'opacity-60' : ''}`}
-      data-task-id={task.id}
-      data-category-id={task.data.related_category_id || ''}
-      data-completed={task.data.is_completed ? 'true' : 'false'}
-      data-title={task.data.title.toLowerCase()}
-    >
-      <div class="flex items-start gap-4">
-        <!-- Checkbox más prominente -->
-        <div class="flex-shrink-0 pt-1.5">
-          <input 
-            type="checkbox" 
-            class="task-checkbox w-6 h-6 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
-            data-task-id={task.id}
-            checked={task.data.is_completed}
-          />
-        </div>
-
-        <!-- Contenido principal -->
-        <div class="flex-1 min-w-0">
-          <!-- Título como link directo (sin botón editar separado) -->
-          <a 
-            href={`/tasks/${task.id}`}
-            class={`block font-semibold hover:text-indigo-600 transition-colors ${
-              task.data.is_completed ? 'line-through text-gray-500' : 
-              task.level === 0 ? 'text-gray-900 text-lg' : 'text-gray-700'
-            }`}
-          >
-            {task.level > 0 && <span class="text-indigo-400 mr-2">└─</span>}
-            {task.data.title}
-          </a>
-
-          <!-- Descripción (si existe) -->
-          {task.data.description && (
-            <p class="text-sm text-gray-600 mt-2 line-clamp-2 leading-relaxed">
-              {task.data.description.replace(/#/g, '').substring(0, 150)}
-            </p>
-          )}
-          
-          <!-- Metadata: categoría y tipo -->
-          {task.data.related_category_id && (
-            <div class="flex flex-wrap items-center gap-3 mt-3">
-              <span class="inline-flex items-center gap-1.5 px-2.5 py-1 bg-purple-100 text-purple-700 rounded-md text-xs font-medium">
-                📁 {(() => {
-                  const cat = categories.find((c: any) => c.id === task.data.related_category_id);
-                  return cat ? cat.name : 'Categoría';
-                })()}
-              </span>
+        ) : (
+          <div class="divide-y divide-gray-200">
+            {tasks.map((task: any) => {
+              const statusColors = {
+                todo: 'bg-gray-100 text-gray-700',
+                in_progress: 'bg-blue-100 text-blue-700',
+                done: 'bg-green-100 text-green-700',
+                blocked: 'bg-red-100 text-red-700'
+              };
               
-              {task.data.applies_to_all && (
-                <span class="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-100 text-indigo-700 rounded-md text-xs font-medium">
-                  ✨ Todas las entradas
-                </span>
-              )}
+              const statusIcons = {
+                todo: '📝',
+                in_progress: '🔄',
+                done: '✅',
+                blocked: '🚫'
+              };
               
-              {task.data.specific_entry_ids && task.data.specific_entry_ids.length > 0 && (
-                <span class="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-100 text-blue-700 rounded-md text-xs font-medium">
-                  🎯 {task.data.specific_entry_ids.length} específica(s)
-                </span>
-              )}
-            </div>
-          )}
+              const statusLabels = {
+                todo: 'Por Hacer',
+                in_progress: 'En Progreso',
+                done: 'Completado',
+                blocked: 'Bloqueado'
+              };
+              
+              const status = task.data.status || 'todo';
+              
+              return (
+                <div 
+                  class={`task-row py-4 px-6 hover:bg-gray-50 transition status-${status} ${
+                    task.level === 0 ? 'bg-white' : 'bg-gray-50'
+                  } ${status === 'done' ? 'opacity-60' : ''}`}
+                  style={`padding-left: ${1.5 + task.level * 2}rem;`}
+                  data-task-id={task.id}
+                  data-category-id={task.data.related_category_id || ''}
+                  data-status={status}
+                  data-title={task.data.title.toLowerCase()}
+                >
+                  <div class="flex items-start gap-4">
+                    <div class="flex-1 min-w-0">
+                      <div class="flex items-start justify-between gap-4">
+                        <div class="flex-1">
+                          <div class="flex items-center gap-2 mb-2">
+                            {task.level > 0 && (
+                              <span class="text-gray-400">
+                                {'└─'+'─'.repeat(Math.min(task.level-1, 4))}
+                              </span>
+                            )}
+                            <a 
+                              href={`/tasks/${task.id}`}
+                              class={`font-semibold hover:text-indigo-600 transition ${
+                                status === 'done' ? 'line-through text-gray-500' : 
+                                task.level === 0 ? 'text-gray-900 text-lg' : 'text-gray-700'
+                              }`}
+                            >
+                              {task.data.title}
+                            </a>
+                          </div>
 
-          <!-- Footer: prioridad, fecha, etiquetas -->
-          <div class="flex flex-wrap items-center gap-3 mt-3">
-            <!-- Prioridad -->
-            <span class={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium ${
-              task.data.priority === 'critical' ? 'bg-red-100 text-red-700' :
-              task.data.priority === 'high' ? 'bg-orange-100 text-orange-700' :
-              task.data.priority === 'medium' ? 'bg-blue-100 text-blue-700' :
-              'bg-gray-100 text-gray-600'
-            }`}>
-              {task.data.priority === 'critical' ? '🔥 Crítica' :
-               task.data.priority === 'high' ? '⬆️ Alta' :
-               task.data.priority === 'medium' ? '➡️ Media' :
-               '⬇️ Baja'}
-            </span>
+                          {task.data.description && (
+                            <p class="text-sm text-gray-600 mt-1 line-clamp-2 ml-0">
+                              {task.data.description.replace(/#/g, '').substring(0, 150)}
+                            </p>
+                          )}
+                          
+                          {/* Metadata */}
+                          <div class="flex items-center gap-3 mt-3 text-xs text-gray-500">
+                            {/* Estado */}
+                            <span class={`px-2 py-1 rounded font-medium ${statusColors[status as keyof typeof statusColors]}`}>
+                              {statusIcons[status as keyof typeof statusIcons]} {statusLabels[status as keyof typeof statusLabels]}
+                            </span>
+                            
+                            {/* Prioridad */}
+                            <span class={`px-2 py-1 rounded font-medium ${
+                              task.data.priority === 'critical' ? 'bg-red-100 text-red-700' :
+                              task.data.priority === 'high' ? 'bg-orange-100 text-orange-700' :
+                              task.data.priority === 'medium' ? 'bg-blue-100 text-blue-700' :
+                              'bg-gray-100 text-gray-600'
+                            }`}>
+                              {task.data.priority === 'critical' ? '🔥 Crítica' :
+                               task.data.priority === 'high' ? '⬆️ Alta' :
+                               task.data.priority === 'medium' ? '➡️ Media' :
+                               '⬇️ Baja'}
+                            </span>
 
-            {/* Fecha límite */}
-            {task.data.due_date && (
-              <span class="inline-flex items-center gap-1.5 text-xs text-gray-500">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-                {new Date(task.data.due_date).toLocaleDateString('es-ES')}
-              </span>
-            )}
+                            {/* Categoría relacionada */}
+                            {task.data.related_category_id && (
+                              <span class="flex items-center gap-1">
+                                📁 {(() => {
+                                  const cat = categories.find((c: any) => c.id === task.data.related_category_id);
+                                  return cat ? cat.name : 'Categoría';
+                                })()}
+                              </span>
+                            )}
+                            
+                            {/* Tipo de aplicación */}
+                            {task.data.applies_to_all && (
+                              <span class="px-2 py-0.5 bg-purple-100 text-purple-700 rounded">
+                                ✨ Todas las entradas
+                              </span>
+                            )}
+                            
+                            {task.data.specific_entry_ids && task.data.specific_entry_ids.length > 0 && (
+                              <span class="px-2 py-0.5 bg-blue-100 text-blue-700 rounded">
+                                🎯 {task.data.specific_entry_ids.length} específica(s)
+                              </span>
+                            )}
 
-            {/* Etiquetas */}
-            {task.data.tags && task.data.tags.length > 0 && (
-              <div class="flex gap-1.5">
-                {task.data.tags.slice(0, 3).map((tag: string) => (
-                  <span class="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs">
-                    #{tag}
-                  </span>
-                ))}
-                {task.data.tags.length > 3 && (
-                  <span class="px-2 py-0.5 bg-gray-100 text-gray-500 rounded text-xs">
-                    +{task.data.tags.length - 3}
-                  </span>
-                )}
-              </div>
-            )}
+                            {/* Fecha límite */}
+                            {task.data.due_date && (
+                              <span class="flex items-center gap-1">
+                                📅 {new Date(task.data.due_date).toLocaleDateString('es-ES')}
+                              </span>
+                            )}
+
+                            {/* Persona asignada */}
+                            {task.data.assigned_to && (
+                              <span class="flex items-center gap-1">
+                                👤 {task.data.assigned_to}
+                              </span>
+                            )}
+
+                            {/* Etiquetas */}
+                            {task.data.tags && task.data.tags.length > 0 && (
+                              <div class="flex gap-1">
+                                {task.data.tags.slice(0, 2).map((tag: string) => (
+                                  <span class="px-2 py-0.5 bg-gray-100 text-gray-600 rounded">
+                                    #{tag}
+                                  </span>
+                                ))}
+                                {task.data.tags.length > 2 && (
+                                  <span class="px-2 py-0.5 bg-gray-100 text-gray-600 rounded">
+                                    +{task.data.tags.length - 2}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Acciones */}
+                          <div class="flex gap-2 mt-3">
+                            <button 
+                              class="add-subtask text-xs px-3 py-1 bg-gray-100 text-gray-600 rounded hover:bg-gray-200 transition"
+                              data-parent-id={task.id}
+                              data-category-id={task.data.related_category_id}
+                            >
+                              + Subtarea
+                            </button>
+                            <a 
+                              href={`/tasks/${task.id}`}
+                              class="text-xs px-3 py-1 bg-indigo-100 text-indigo-600 rounded hover:bg-indigo-200 transition"
+                            >
+                              Ver/Editar
+                            </a>
+                            <button 
+                              class="delete-task text-xs px-3 py-1 bg-red-50 text-red-600 rounded hover:bg-red-100 transition"
+                              data-task-id={task.id}
+                            >
+                              Eliminar
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
-
-          <!-- Acciones: solo aparecen al hover -->
-          <div class="flex gap-2 mt-4 opacity-0 group-hover:opacity-100 transition-opacity">
-            {task.level === 0 && (
-              <button 
-                class="add-subtask text-xs px-3 py-1.5 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition"
-                data-parent-id={task.id}
-                data-category-id={task.data.related_category_id}
-              >
-                + Subtarea
-              </button>
-            )}
-            <button 
-              class="delete-task text-xs px-3 py-1.5 bg-red-50 text-red-600 rounded-md hover:bg-red-100 transition"
-              data-task-id={task.id}
-            >
-              Eliminar
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  ))}
-</div>
-          )}
-        </div>
+        )}
       </div>
     )}
   </main>
 
   <script>
-    // Checkboxes de completado
-    document.querySelectorAll('.task-checkbox').forEach(checkbox => {
-      checkbox.addEventListener('change', async (e) => {
-        const target = e.target as HTMLInputElement;
-        const taskId = target.dataset.taskId;
-        const isCompleted = target.checked;
-        
-        try {
-          const response = await fetch('/api/tasks', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              id: taskId,
-              is_completed: isCompleted
-            })
-          });
-          
-          if (response.ok) {
-            window.location.reload();
-          }
-        } catch (error) {
-          console.error('Error:', error);
-          target.checked = !isCompleted;
-        }
-      });
-    });
 
     // Eliminar tarea
     document.querySelectorAll('.delete-task').forEach(btn => {
@@ -334,34 +350,35 @@ if (taskCategory) {
     });
 
     // Añadir subtarea
+    // Añadir subtarea
     document.querySelectorAll('.add-subtask').forEach(btn => {
       btn.addEventListener('click', (e) => {
         const parentId = (e.target as HTMLElement).dataset.parentId;
         const categoryId = (e.target as HTMLElement).dataset.categoryId;
-        window.location.href = `/tasks/create?parent_id=${parentId}&category_id=${categoryId}`;
+        window.location.href = `/tasks/create?parent_id=${parentId}&category_id=${categoryId || ''}`;
       });
     });
 
     // Filtros
     const categoryFilter = document.getElementById('categoryFilter') as HTMLSelectElement;
+    const statusFilter = document.getElementById('statusFilter') as HTMLSelectElement;
     const searchInput = document.getElementById('searchInput') as HTMLInputElement;
-    const hideCompleted = document.getElementById('hideCompleted') as HTMLInputElement;
 
     function applyFilters() {
       const categoryValue = categoryFilter?.value || '';
+      const statusValue = statusFilter?.value || '';
       const searchValue = searchInput?.value.toLowerCase() || '';
-      const hideCompletedValue = hideCompleted?.checked || false;
 
       document.querySelectorAll('.task-row').forEach(row => {
         const taskCategoryId = (row as HTMLElement).dataset.categoryId || '';
-        const taskCompleted = (row as HTMLElement).dataset.completed === 'true';
+        const taskStatus = (row as HTMLElement).dataset.status || '';
         const taskTitle = (row as HTMLElement).dataset.title || '';
 
         const matchesCategory = !categoryValue || taskCategoryId === categoryValue;
+        const matchesStatus = !statusValue || taskStatus === statusValue;
         const matchesSearch = !searchValue || taskTitle.includes(searchValue);
-        const matchesCompleted = !hideCompletedValue || !taskCompleted;
 
-        if (matchesCategory && matchesSearch && matchesCompleted) {
+        if (matchesCategory && matchesStatus && matchesSearch) {
           (row as HTMLElement).style.display = '';
         } else {
           (row as HTMLElement).style.display = 'none';
@@ -370,32 +387,8 @@ if (taskCategory) {
     }
 
     categoryFilter?.addEventListener('change', applyFilters);
+    statusFilter?.addEventListener('change', applyFilters);
     searchInput?.addEventListener('input', applyFilters);
-    hideCompleted?.addEventListener('change', applyFilters);
   </script>
-  <style>
-    /* Margen izquierdo corregido */
-    .task-row {
-      margin-left: 0;
-    }
-    
-    /* Indentación para subtareas */
-    .task-row.ml-8 {
-      margin-left: 2rem;
-    }
-    
-    /* Mejorar densidad visual */
-    .task-row {
-      line-height: 1.5;
-    }
-    
-    /* Limitar descripción a 2 líneas */
-    .line-clamp-2 {
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
-      overflow: hidden;
-    }
-  </style>
 </body>
 </html>

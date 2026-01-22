@@ -6,17 +6,13 @@ const { id } = Astro.params;
 
 const task = db.prepare('SELECT * FROM entries WHERE id = ?').get(id);
 
+console.log(task);
+
 if (!task) {
   return Astro.redirect('/tasks');
 }
 
 const taskData = JSON.parse((task as any).data);
-
-const taskStatuses = db.prepare('SELECT * FROM task_statuses ORDER BY order_index').all();
-const currentStatusId = taskData.status_id || null;
-const currentStatus = currentStatusId 
-  ? db.prepare('SELECT * FROM task_statuses WHERE id = ?').get(currentStatusId)
-  : db.prepare('SELECT * FROM task_statuses WHERE is_default = 1').get();
 
 // Obtener categoría relacionada si existe
 let relatedCategory = null;
@@ -40,6 +36,16 @@ if (taskData.parent_task_id) {
     parentTask.data = JSON.parse(parentTask.data);
   }
 }
+
+// Obtener categorías para selector
+const categories = db.prepare('SELECT id, name, slug FROM categories WHERE is_system = 0 ORDER BY name').all();
+
+// Obtener entradas de la categoría relacionada
+let categoryEntries: any[] = [];
+if (taskData.related_category_id) {
+  categoryEntries = db.prepare('SELECT id, title FROM entries WHERE category_id = ? ORDER BY title')
+    .all(taskData.related_category_id);
+}
 ---
 
 <!DOCTYPE html>
@@ -48,261 +54,117 @@ if (taskData.parent_task_id) {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{taskData.title} - Tarea</title>
+  <style>
+    .editable-input {
+      border: 2px solid transparent;
+      transition: all 0.2s;
+    }
+    .editable-input:hover {
+      border-color: #e5e7eb;
+      background-color: #f9fafb;
+    }
+    .editable-input:focus {
+      border-color: #6366f1;
+      background-color: white;
+      outline: none;
+    }
+    .section-card {
+      background: white;
+      border-radius: 8px;
+      padding: 1.5rem;
+      margin-bottom: 1rem;
+    }
+  </style>
 </head>
-<body class="bg-gray-50 min-h-screen">
+<body class="bg-gray-50 min-h-screen" data-task-id={id}>
   <header class="bg-white shadow-sm border-b border-gray-200">
-    <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+    <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
       <a href="/tasks" class="text-sm text-gray-500 hover:text-gray-700">← Volver a tareas</a>
-      <h1 class="text-2xl font-bold text-gray-900 mt-1">{taskData.title}</h1>
     </div>
   </header>
 
-  <main class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-    <div class="bg-white rounded-lg shadow border border-gray-200 p-8">
-      {parentTask && (
-        <div class="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-          <p class="text-sm text-blue-900">
-            <strong>Subtarea de:</strong> 
-            <a href={`/tasks/${parentTask.id}`} class="underline hover:text-blue-700">
-              {parentTask.data.title}
-            </a>
-          </p>
-        </div>
-      )}
-
-      <div class="space-y-6">
-        <!-- Estado -->
-        <div class="flex items-center gap-4">
-          <label class="flex items-center gap-2">
-            <div class="flex items-center gap-4">
-              <div class="flex-1">
-                <label class="block text-sm font-medium text-gray-700 mb-2">Estado</label>
-                <select 
-                  id="taskStatus"
-                  class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                  style={`border-left: 4px solid ${(currentStatus as any)?.color || '#9ca3af'}`}
-                >
-                  {taskStatuses.map((status: any) => (
-                    <option 
-                      value={status.id} 
-                      selected={status.id === (currentStatus as any)?.id}
-                      data-color={status.color}
-                    >
-                      {status.icon} {status.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              
-              <span class={`px-3 py-1 rounded text-sm font-medium ${
-                taskData.priority === 'critical' ? 'bg-red-100 text-red-700' :
-                taskData.priority === 'high' ? 'bg-orange-100 text-orange-700' :
-                taskData.priority === 'medium' ? 'bg-blue-100 text-blue-700' :
-                'bg-gray-100 text-gray-600'
-              }`}>
-                Prioridad: {taskData.priority === 'critical' ? '🔥 Crítica' :
-                          taskData.priority === 'high' ? '⬆️ Alta' :
-                          taskData.priority === 'medium' ? '➡️ Media' :
-                          '⬇️ Baja'}
-              </span>
-            </div>
-            <span class="font-medium">Tarea completada</span>
-          </label>
-          
-          <span class={`px-3 py-1 rounded text-sm font-medium ${
-            taskData.priority === 'critical' ? 'bg-red-100 text-red-700' :
-            taskData.priority === 'high' ? 'bg-orange-100 text-orange-700' :
-            taskData.priority === 'medium' ? 'bg-blue-100 text-blue-700' :
-            'bg-gray-100 text-gray-600'
-          }`}>
-            Prioridad: {taskData.priority === 'critical' ? '🔥 Crítica' :
-                       taskData.priority === 'high' ? '⬆️ Alta' :
-                       taskData.priority === 'medium' ? '➡️ Media' :
-                       '⬇️ Baja'}
-          </span>
+  <main class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <!-- Contenido Principal -->
+      <div class="lg:col-span-2 space-y-4">
+        {/* Título */}
+        <div>
+          <input 
+            type="text" 
+            id="taskTitle"
+            value={taskData.title}
+            class="text-3xl font-bold w-full px-3 py-2 rounded-lg editable-input"
+            placeholder="Título de la tarea"
+          />
         </div>
 
-        <!-- Descripción -->
-        {taskData.description && (
-          <div>
-            <h3 class="font-semibold text-gray-900 mb-2">Descripción</h3>
-            <div class="prose max-w-none">
-              {taskData.description}
-            </div>
-          </div>
-        )}
-
-        <!-- Categoría relacionada -->
-        {relatedCategory && (
-          <div>
-            <h3 class="font-semibold text-gray-900 mb-2">Categoría Relacionada</h3>
-            <a 
-              href={`/categories/${(relatedCategory as any).slug}`}
-              class="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 rounded-lg hover:bg-gray-200"
-            >
-              <div class="w-6 h-6 rounded" style={`background-color: ${(relatedCategory as any).color}`}></div>
-              {(relatedCategory as any).name}
-            </a>
-            <p class="text-sm text-gray-500 mt-2">
-              {taskData.applies_to_all ? 
-                '✨ Aplica a todas las entradas de esta categoría' :
-                `🎯 Aplica a ${taskData.specific_entry_ids?.length || 0} entradas específicas`
-              }
+        {parentTask && (
+          <div class="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <p class="text-sm text-blue-900">
+              <strong>Subtarea de:</strong> 
+              <a href={`/tasks/${parentTask.id}`} class="underline hover:text-blue-700">
+                {parentTask.data.title}
+              </a>
             </p>
           </div>
         )}
 
-        {taskData.specific_entry_ids && taskData.specific_entry_ids.length > 0 && (
-          <div>
-            <h3 class="font-semibold text-gray-900 mb-2">
-              Entradas vinculadas ({taskData.specific_entry_ids.length})
+        {/* Descripción */}
+        <div class="section-card">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="font-semibold text-gray-900 flex items-center gap-2">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7" />
+              </svg>
+              Descripción
             </h3>
-            <div class="space-y-2">
-              {taskData.specific_entry_ids.map((entryId: string) => {
-                const entry = db.prepare('SELECT * FROM entries WHERE id = ?').get(entryId) as any;
-                if (!entry) return null;
-                
-                const entryCategory = db.prepare('SELECT * FROM categories WHERE id = ?').get(entry.category_id) as any;
-                
-                return (
-                  <div class="flex items-center gap-3 p-3 border border-gray-200 rounded-lg hover:border-indigo-300">
-                    <div class="w-2 h-2 rounded-full" style={`background-color: ${entryCategory.color}`}></div>
-                    <div class="flex-1">
-                      <a 
-                        href={`/entries/${entryCategory.slug}/${entry.id}`}
-                        class="font-medium text-gray-900 hover:text-indigo-600"
-                      >
-                        {entry.title}
-                      </a>
-                      <p class="text-xs text-gray-500">{entryCategory.name}</p>
-                    </div>
-                    <button 
-                      class="unlink-entry text-gray-400 hover:text-red-600"
-                      data-entry-id={entry.id}
-                      title="Desvincular entrada"
-                    >
-                      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
           </div>
-        )}
-
-        <!-- Metadata -->
-        <div class="grid grid-cols-2 gap-4 pt-4 border-t">
-          {taskData.due_date && (
-            <div>
-              <h4 class="text-sm font-medium text-gray-500">Fecha Límite</h4>
-              <p class="text-gray-900">{new Date(taskData.due_date).toLocaleDateString('es-ES')}</p>
-            </div>
-          )}
-          
-          <div>
-            <h4 class="text-sm font-medium text-gray-500">Creada</h4>
-            <p class="text-gray-900">{new Date((task as any).created_at).toLocaleDateString('es-ES')}</p>
-          </div>
-
-          {taskData.assigned_to && (
-            <div>
-              <h4 class="text-sm font-medium text-gray-500">Asignado a</h4>
-              <div class="flex items-center gap-2 mt-1">
-                <div class="w-8 h-8 rounded-full bg-indigo-600 text-white flex items-center justify-center font-semibold text-sm">
-                  {taskData.assigned_to.substring(0, 2).toUpperCase()}
-                </div>
-                <p class="text-gray-900">{taskData.assigned_to}</p>
-              </div>
-            </div>
-          )}
-
-          <!-- Sección de comentarios (al final del contenido) -->
-          {taskData.comments && taskData.comments.length > 0 && (
-            <div class="pt-6 border-t">
-              <h3 class="font-semibold text-gray-900 mb-3">
-                Comentarios ({taskData.comments.length})
-              </h3>
-              <div class="space-y-3">
-                {taskData.comments.map((comment: any) => (
-                  <div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                    <div class="flex items-start gap-3">
-                      <div class="w-8 h-8 rounded-full bg-gray-400 text-white flex items-center justify-center font-semibold text-xs">
-                        {comment.user ? comment.user.substring(0, 2).toUpperCase() : '??'}
-                      </div>
-                      <div class="flex-1">
-                        <div class="flex items-center justify-between mb-1">
-                          <span class="font-medium text-sm text-gray-900">
-                            {comment.user || 'Usuario'}
-                          </span>
-                          <span class="text-xs text-gray-500">
-                            {new Date(comment.timestamp).toLocaleString('es-ES')}
-                          </span>
-                        </div>
-                        <p class="text-sm text-gray-700">{comment.text}</p>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <!-- Formulario para añadir comentario -->
-          <div class="pt-4 border-t">
-            <h4 class="font-semibold text-gray-900 mb-2">Añadir comentario</h4>
-            <div class="flex gap-2">
-              <input 
-                type="text" 
-                id="newComment"
-                placeholder="Escribe un comentario..."
-                class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm"
-              />
-              <button 
-                id="addCommentBtn"
-                class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-medium"
-              >
-                Comentar
-              </button>
-            </div>
-          </div>
+          <textarea 
+            id="taskDescription"
+            rows="6"
+            class="w-full px-3 py-2 border border-gray-300 rounded-lg editable-input font-mono text-sm"
+            placeholder="Añade una descripción más detallada..."
+          >{taskData.description || ''}</textarea>
+          <p class="text-xs text-gray-500 mt-2">Soporta Markdown</p>
         </div>
 
-        <!-- Etiquetas -->
-        {taskData.tags && taskData.tags.length > 0 && (
-          <div>
-            <h3 class="font-semibold text-gray-900 mb-2">Etiquetas</h3>
-            <div class="flex flex-wrap gap-2">
-              {taskData.tags.map((tag: string) => (
-                <span class="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm">
-                  #{tag}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <!-- Subtareas -->
+        {/* Subtareas */}
         {subtasks.length > 0 && (
-          <div class="pt-4 border-t">
-            <h3 class="font-semibold text-gray-900 mb-3">Subtareas ({subtasks.length})</h3>
+          <div class="section-card">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="font-semibold text-gray-900 flex items-center gap-2">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                </svg>
+                Subtareas ({subtasks.length})
+              </h3>
+              <a 
+                href={`/tasks/create?parent_id=${id}&category_id=${taskData.related_category_id || ''}`}
+                class="text-sm px-3 py-1 bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
+              >
+                + Añadir
+              </a>
+            </div>
             <div class="space-y-2">
               {subtasks.map((subtask: any) => {
                 const subData = JSON.parse(subtask.data);
+                const statusColors = {
+                  todo: 'bg-gray-100 text-gray-700',
+                  in_progress: 'bg-blue-100 text-blue-700',
+                  done: 'bg-green-100 text-green-700',
+                  blocked: 'bg-red-100 text-red-700'
+                };
                 return (
                   <a 
                     href={`/tasks/${subtask.id}`}
                     class="block p-3 border border-gray-200 rounded-lg hover:border-indigo-300 hover:bg-gray-50"
                   >
-                    <div class="flex items-center gap-3">
-                      <input 
-                        type="checkbox" 
-                        checked={subData.is_completed}
-                        class="w-4 h-4 rounded pointer-events-none"
-                      />
-                      <span class={subData.is_completed ? 'line-through text-gray-500' : ''}>
+                    <div class="flex items-center justify-between">
+                      <span class={subData.status === 'done' ? 'line-through text-gray-500' : ''}>
                         {subData.title}
+                      </span>
+                      <span class={`px-2 py-0.5 rounded text-xs font-medium ${statusColors[subData.status as keyof typeof statusColors] || 'bg-gray-100 text-gray-600'}`}>
+                        {subData.status}
                       </span>
                     </div>
                   </a>
@@ -312,17 +174,177 @@ if (taskData.parent_task_id) {
           </div>
         )}
 
-        <!-- Acciones -->
-        <div class="flex gap-3 pt-6 border-t">
+        {/* Entradas Relacionadas */}
+        {relatedCategory && (
+          <div class="section-card">
+            <h3 class="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+              </svg>
+              Categoría Relacionada
+            </h3>
+            <div class="flex items-center gap-2 mb-2">
+              <div class="w-6 h-6 rounded" style={`background-color: ${(relatedCategory as any).color}`}></div>
+              <span class="font-medium">{(relatedCategory as any).name}</span>
+            </div>
+            <p class="text-sm text-gray-500">
+              {taskData.applies_to_all ? 
+                '✨ Aplica a todas las entradas de esta categoría' :
+                `🎯 Aplica a ${taskData.specific_entry_ids?.length || 0} entradas específicas`
+              }
+            </p>
+          </div>
+        )}
+      </div>
+
+      <!-- Sidebar -->
+      <div class="space-y-4">
+        {/* Estado */}
+        <div class="section-card">
+          <label class="block text-sm font-medium text-gray-700 mb-2">Estado</label>
+          <select 
+            id="taskStatus"
+            class="w-full px-3 py-2 border border-gray-300 rounded-lg"
+          >
+            <option value="todo" selected={taskData.status === 'todo'}>📝 Por Hacer</option>
+            <option value="in_progress" selected={taskData.status === 'in_progress'}>🔄 En Progreso</option>
+            <option value="done" selected={taskData.status === 'done'}>✅ Completado</option>
+            <option value="blocked" selected={taskData.status === 'blocked'}>🚫 Bloqueado</option>
+          </select>
+        </div>
+
+        {/* Prioridad */}
+        <div class="section-card">
+          <label class="block text-sm font-medium text-gray-700 mb-2">Prioridad</label>
+          <select 
+            id="taskPriority"
+            class="w-full px-3 py-2 border border-gray-300 rounded-lg"
+          >
+            <option value="low" selected={taskData.priority === 'low'}>⬇️ Baja</option>
+            <option value="medium" selected={taskData.priority === 'medium'}>➡️ Media</option>
+            <option value="high" selected={taskData.priority === 'high'}>⬆️ Alta</option>
+            <option value="critical" selected={taskData.priority === 'critical'}>🔥 Crítica</option>
+          </select>
+        </div>
+
+        {/* Persona Asignada */}
+        <div class="section-card">
+          <label class="block text-sm font-medium text-gray-700 mb-2">
+            <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+            </svg>
+            Asignado a
+          </label>
+          <input 
+            type="text" 
+            id="taskAssignedTo"
+            value={taskData.assigned_to || ''}
+            class="w-full px-3 py-2 border border-gray-300 rounded-lg"
+            placeholder="Nombre de la persona"
+          />
+        </div>
+
+        {/* Fecha Límite */}
+        <div class="section-card">
+          <label class="block text-sm font-medium text-gray-700 mb-2">
+            <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            Fecha Límite
+          </label>
+          <input 
+            type="date" 
+            id="taskDueDate"
+            value={taskData.due_date || ''}
+            class="w-full px-3 py-2 border border-gray-300 rounded-lg"
+          />
+        </div>
+
+        {/* Categoría Relacionada */}
+        <div class="section-card">
+          <label class="block text-sm font-medium text-gray-700 mb-2">Categoría Relacionada</label>
+          <select 
+            id="taskRelatedCategory"
+            class="w-full px-3 py-2 border border-gray-300 rounded-lg mb-2"
+          >
+            <option value="">Ninguna</option>
+            {categories.map((cat: any) => (
+              <option value={cat.id} selected={cat.id === taskData.related_category_id}>
+                {cat.name}
+              </option>
+            ))}
+          </select>
+          
+          <label class="flex items-center gap-2 mt-3">
+            <input 
+              type="checkbox" 
+              id="taskAppliesToAll"
+              checked={taskData.applies_to_all}
+              class="rounded"
+            />
+            <span class="text-sm text-gray-700">Aplicar a todas las entradas</span>
+          </label>
+        </div>
+
+        {/* Etiquetas */}
+        <div class="section-card">
+          <label class="block text-sm font-medium text-gray-700 mb-2">Etiquetas</label>
+          <div class="flex gap-2 mb-2">
+            <input 
+              type="text" 
+              id="tagInput"
+              placeholder="Nueva etiqueta"
+              class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm"
+            />
+            <button 
+              id="addTagBtn"
+              class="px-3 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+            >
+              +
+            </button>
+          </div>
+          <div id="tagsList" class="flex flex-wrap gap-2">
+            {taskData.tags && taskData.tags.map((tag: string) => (
+              <span class="px-3 py-1 bg-indigo-100 text-indigo-700 rounded-full text-sm flex items-center gap-2">
+                #{tag}
+                <button class="remove-tag hover:text-indigo-900" data-tag={tag}>×</button>
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {/* Información */}
+        <div class="section-card">
+          <h3 class="text-sm font-medium text-gray-700 mb-3">Información</h3>
+          <dl class="space-y-2 text-sm">
+            <div>
+              <dt class="text-xs text-gray-500">Creada</dt>
+              <dd class="text-gray-900">{new Date((task as any).created_at).toLocaleDateString('es-ES')}</dd>
+            </div>
+            <div>
+              <dt class="text-xs text-gray-500">Última actualización</dt>
+              <dd class="text-gray-900">{new Date((task as any).updated_at).toLocaleDateString('es-ES')}</dd>
+            </div>
+          </dl>
+        </div>
+
+        {/* Acciones */}
+        <div class="section-card space-y-2">
+          <button 
+            id="saveBtn"
+            class="w-full px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition"
+          >
+            💾 Guardar Cambios
+          </button>
           <a 
             href={`/tasks/create?parent_id=${id}&category_id=${taskData.related_category_id || ''}`}
-            class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
+            class="block w-full px-4 py-2 bg-gray-100 text-gray-700 text-center rounded-lg hover:bg-gray-200 transition"
           >
             + Añadir Subtarea
           </a>
           <button 
             id="deleteBtn"
-            class="px-4 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"
+            class="w-full px-4 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition"
           >
             Eliminar Tarea
           </button>
@@ -332,103 +354,92 @@ if (taskData.parent_task_id) {
   </main>
 
   <script>
-    const taskId = window.location.pathname.split('/').pop();
-    
-    // Marcar como completada
-    document.getElementById('completedCheckbox')?.addEventListener('change', async (e) => {
-      const checked = (e.target as HTMLInputElement).checked;
-      
-      try {
-        const response = await fetch('/api/tasks', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            id: taskId,
-            is_completed: checked
-          })
-        });
-        
-        if (response.ok) {
-          window.location.reload();
-        }
-      } catch (error) {
-        alert('Error al actualizar');
-      }
+    import db from "@/lib/db";
+
+    const taskId = document.body.dataset.taskId!;
+    const task = db.prepare('SELECT * FROM entries WHERE id = ?').get(taskId);
+    const taskData = JSON.parse((task as any).data);
+    let tags: string[] = (taskData.tags || []).map((t: string) => `"${t}"`).join(',');
+
+    // Gestión de etiquetas
+    const tagInput = document.getElementById('tagInput') as HTMLInputElement;
+    const tagsList = document.getElementById('tagsList')!;
+
+    document.getElementById('addTagBtn')?.addEventListener('click', () => {
+      const value = tagInput.value.trim().toLowerCase();
+      if (!value || tags.includes(value)) return;
+
+      tags.push(value);
+      addTagToUI(value);
+      tagInput.value = '';
     });
 
-    document.getElementById('taskStatus')?.addEventListener('change', async (e) => {
-      const statusId = (e.target as HTMLSelectElement).value;
+    function addTagToUI(tag: string) {
+      const span = document.createElement('span');
+      span.className = 'px-3 py-1 bg-indigo-100 text-indigo-700 rounded-full text-sm flex items-center gap-2';
+      span.innerHTML = `#${tag} <button class="remove-tag hover:text-indigo-900" data-tag="${tag}">×</button>`;
       
-      try {
-        const response = await fetch('/api/tasks', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            id: taskId,
-            status_id: statusId
-          })
-        });
-        
-        if (response.ok) {
-          // Cambiar color del borde
-          const selectedOption = (e.target as HTMLSelectElement).selectedOptions[0];
-          const color = selectedOption.dataset.color;
-          (e.target as HTMLSelectElement).style.borderLeftColor = color || '#9ca3af';
-          
-          showToast('✅ Estado actualizado');
-        }
-      } catch (error) {
-        alert('Error al actualizar');
-      }
-    });
-
-    document.getElementById('addCommentBtn')?.addEventListener('click', async () => {
-      const input = document.getElementById('newComment') as HTMLInputElement;
-      const text = input.value.trim();
-      
-      if (!text) return;
-      
-      const taskId = window.location.pathname.split('/').pop();
-      
-      // Obtener tarea actual
-      const response = await fetch(`/api/entries?id=${taskId}`);
-      const task = await response.json();
-      const data = JSON.parse(task.data);
-      
-      // Añadir nuevo comentario
-      const newComment = {
-        user: 'Usuario Actual', // TODO: integrar con sistema de usuarios
-        text: text,
-        timestamp: new Date().toISOString()
-      };
-      
-      if (!data.comments) data.comments = [];
-      data.comments.push(newComment);
-      
-      // Guardar
-      await fetch('/api/entries', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: taskId,
-          data: data
-        })
+      span.querySelector('.remove-tag')?.addEventListener('click', function() {
+        const tagToRemove = (this as HTMLElement).dataset.tag!;
+        tags = tags.filter(t => t !== tagToRemove);
+        span.remove();
       });
       
-      window.location.reload();
+      tagsList.appendChild(span);
+    }
+
+    // Eliminar etiqueta existente
+    document.querySelectorAll('.remove-tag').forEach(btn => {
+      btn.addEventListener('click', function() {
+        const tag = (this as HTMLElement).dataset.tag!;
+        tags = tags.filter(t => t !== tag);
+        (this as HTMLElement).closest('span')?.remove();
+      });
+    });
+
+    // Guardar cambios
+    document.getElementById('saveBtn')?.addEventListener('click', async () => {
+      const updatedData = {
+        title: (document.getElementById('taskTitle') as HTMLInputElement).value,
+        description: (document.getElementById('taskDescription') as HTMLTextAreaElement).value,
+        status: (document.getElementById('taskStatus') as HTMLSelectElement).value,
+        priority: (document.getElementById('taskPriority') as HTMLSelectElement).value,
+        assigned_to: (document.getElementById('taskAssignedTo') as HTMLInputElement).value,
+        due_date: (document.getElementById('taskDueDate') as HTMLInputElement).value || null,
+        related_category_id: (document.getElementById('taskRelatedCategory') as HTMLSelectElement).value || null,
+        applies_to_all: (document.getElementById('taskAppliesToAll') as HTMLInputElement).checked,
+        tags: tags
+      };
+
+      try {
+        const response = await fetch('/api/tasks', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: taskId, ...updatedData })
+        });
+
+        if (response.ok) {
+          alert('✅ Cambios guardados');
+          window.location.reload();
+        } else {
+          alert('Error al guardar');
+        }
+      } catch (error) {
+        alert('Error de red');
+      }
     });
 
     // Eliminar tarea
     document.getElementById('deleteBtn')?.addEventListener('click', async () => {
       if (!confirm('¿Eliminar esta tarea y todas sus subtareas?')) return;
-      
+
       try {
         const response = await fetch('/api/tasks', {
           method: 'DELETE',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ id: taskId })
         });
-        
+
         if (response.ok) {
           window.location.href = '/tasks';
         }
@@ -436,48 +447,6 @@ if (taskData.parent_task_id) {
         alert('Error al eliminar');
       }
     });
-
-    document.querySelectorAll('.unlink-entry').forEach(btn => {
-      btn.addEventListener('click', async (e) => {
-        const target = e.currentTarget as HTMLElement;
-        const entryId = target.dataset.entryId!;
-        
-        if (!confirm('¿Desvincular esta entrada de la tarea?')) return;
-        
-        try {
-          // Obtener tarea actual
-          const response = await fetch(`/api/entries?id=${taskId}`);
-          const task = await response.json();
-          const taskData = JSON.parse(task.data);
-          
-          // Quitar entry_id
-          const specificIds = (taskData.specific_entry_ids || []).filter((id: string) => id !== entryId);
-          
-          const updateResponse = await fetch('/api/tasks', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              id: taskId,
-              specific_entry_ids: specificIds
-            })
-          });
-          
-          if (updateResponse.ok) {
-            window.location.reload();
-          }
-        } catch (error) {
-          alert('Error al desvincular');
-        }
-      });
-    });
-
-    function showToast(message: string) {
-      const toast = document.createElement('div');
-      toast.className = 'fixed bottom-4 right-4 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg z-50';
-      toast.textContent = message;
-      document.body.appendChild(toast);
-      setTimeout(() => toast.remove(), 2000);
-    }
   </script>
 </body>
 </html>

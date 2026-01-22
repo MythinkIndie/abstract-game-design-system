@@ -47,9 +47,7 @@ export const GET: APIRoute = async ({ url }) => {
       
       // Si incluir subtareas, buscarlas recursivamente
       let subtasks: any[] = [];
-      if (includeSubtasks) {
-        subtasks = getSubtasks(task.id, taskCategory.id);
-      }
+      subtasks = getSubtasks(task.id, taskCategory.id);
       
       return {
         ...task,
