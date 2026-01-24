@@ -27,7 +27,7 @@ const completionStates = db.prepare(`
   SELECT field_id, is_complete FROM field_completion WHERE entry_id = ?
 `).all(id);
 
-const completionMap = new Map((completionStates as any[]).map(c => [c.field_id, c.is_complete === 1]));
+const completionMap = new Map((completionStates as any[]).map(c => [c.field_id, {is_complete: c.is_complete === 1, completion_notes: c.completion_notes}]));
 
 const fieldsWithCompletion = (fields as any[]).map(field => {
   const hasValue = entryData[field.name] !== undefined && entryData[field.name] !== null && entryData[field.name] !== '';
@@ -36,11 +36,38 @@ const fieldsWithCompletion = (fields as any[]).map(field => {
   return {
     ...field,
     has_value: hasValue,
-    is_complete: manualCompletion ?? hasValue,
+    is_complete: manualCompletion?.is_complete ?? hasValue,
+    completion_notes: manualCompletion?.completion_notes
   };
 });
 
+const totalFields = fieldsWithCompletion.length;
 const completedFields = fieldsWithCompletion.filter(f => f.is_complete).length;
+const progress = totalFields > 0 ? Math.round((completedFields / totalFields) * 100) : 0;
+
+// Cargar información de relaciones para mostrar títulos
+const relatedEntries = new Map();
+for (const field of fieldsWithCompletion) {
+  if (field.type === 'relation' && entryData[field.name]) {
+    const config = JSON.parse(field.config);
+    const relatedIds = config.cardinality === '1:1' 
+      ? [entryData[field.name]] 
+      : Array.isArray(entryData[field.name]) ? entryData[field.name] : [];
+    
+    for (const relId of relatedIds) {
+      if (relId && !relatedEntries.has(relId)) {
+        const relEntry = db.prepare('SELECT id, title, category_id FROM entries WHERE id = ?').get(relId) as any;
+        if (relEntry) {
+          const relCategory = db.prepare('SELECT slug FROM categories WHERE id = ?').get(relEntry.category_id) as any;
+          relatedEntries.set(relId, {
+            title: relEntry.title,
+            categorySlug: relCategory?.slug
+          });
+        }
+      }
+    }
+  }
+}
 ---
 
 <!DOCTYPE html>
@@ -49,8 +76,24 @@ const completedFields = fieldsWithCompletion.filter(f => f.is_complete).length;
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{(entry as any).title} - {(category as any).name}</title>
+  <style>
+    .editable-field {
+      cursor: text;
+      transition: all 0.2s;
+      min-height: 2rem;
+    }
+    .editable-field:hover {
+      background-color: #f9fafb;
+      border-color: #d1d5db;
+    }
+    .editable-field:focus {
+      outline: none;
+      border-color: #6366f1;
+      background-color: white;
+    }
+  </style>
 </head>
-<body class="bg-gray-50 min-h-screen" data-entry-id={id}>
+<body class="bg-gray-50 min-h-screen" data-entry-id={id} data-related-entries={JSON.stringify(Object.fromEntries(relatedEntries))}>
   <EntryHeader entry={entry} category={category} entryData={entryData} />
 
   <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -63,37 +106,56 @@ const completedFields = fieldsWithCompletion.filter(f => f.is_complete).length;
         <div class="bg-white rounded-lg shadow border border-gray-200">
           <div class="px-6 py-4 border-b border-gray-200">
             <h2 class="text-lg font-semibold text-gray-900">Datos</h2>
+            <p class="text-xs text-gray-500 mt-1">Click en cualquier campo para editarlo directamente</p>
           </div>
           <div class="p-6 space-y-4">
-            {fieldsWithCompletion.map((field: any) => (
-              <div class="border border-gray-200 rounded-lg p-4">
-                <div class="flex items-start justify-between mb-2">
-                  <div class="flex items-center gap-2 flex-1">
-                    <input 
-                      type="checkbox" 
-                      class="field-completion-checkbox w-5 h-5 text-indigo-600 rounded"
-                      data-field-id={field.id}
-                      checked={field.is_complete}
-                    />
-                    <div>
-                      <h3 class="font-semibold text-gray-900">{field.label}</h3>
-                      <p class="text-xs text-gray-500">{field.name} • {field.type}</p>
+            {fieldsWithCompletion.map((field: any) => {
+              const value = entryData[field.name];
+              const isEmpty = value === undefined || value === null || value === '';
+              
+              // Para campos de relación, pasar info extra
+              let enrichedField = field;
+              if (field.type === 'relation') {
+                const config = JSON.parse(field.config);
+                enrichedField = {
+                  ...field,
+                  relatedEntries: relatedEntries
+                };
+              }
+              
+              return (
+                <div class="border border-gray-200 rounded-lg p-4">
+                  <div class="flex items-start justify-between mb-2">
+                    <div class="flex items-center gap-2 flex-1">
+                      <input 
+                        type="checkbox" 
+                        class="field-completion-checkbox w-5 h-5 text-indigo-600 rounded"
+                        data-field-id={field.id}
+                        data-entry-id={id}
+                        checked={field.is_complete}
+                      />
+                      <div>
+                        <h3 class="font-semibold text-gray-900">{field.label}</h3>
+                        <p class="text-xs text-gray-500">{field.name} • {field.type}</p>
+                      </div>
                     </div>
+                    <span class={`px-2 py-0.5 rounded text-xs font-medium ${
+                      field.is_complete ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
+                    }`}>
+                      {field.is_complete ? 'Completo' : 'Pendiente'}
+                    </span>
                   </div>
-                  <span class={`px-2 py-0.5 rounded text-xs font-medium ${
-                    field.is_complete ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
-                  }`}>
-                    {field.is_complete ? 'Completo' : 'Pendiente'}
-                  </span>
+                  
+                  {field.help_text && (
+                    <p class="text-xs text-gray-500 mb-2 ml-7">{field.help_text}</p>
+                  )}
+                  
+                  <div class="ml-7 mt-2" data-field-container={field.name}>
+                    <FieldRenderer db={db} field={enrichedField} value={value} parentCategory={category}/>
+                  </div>
                 </div>
-                
-                {field.help_text && <p class="text-xs text-gray-500 mb-2 ml-7">{field.help_text}</p>}
-                
-                <div class="ml-7 mt-2">
-                  <FieldRenderer field={field} value={entryData[field.name]} db={db} parentCategory={category}/>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 

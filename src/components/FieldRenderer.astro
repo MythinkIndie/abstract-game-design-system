@@ -229,6 +229,13 @@ const config = field.config ? JSON.parse(field.config) : {};
           </option>
         </select>
         
+        <button
+        class="add-list-item px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-medium transition"
+        data-field={field.name}
+        type="button"
+        >
+          +
+        </button>
         <a 
           href={`/entries/${(relatedCategory as any).slug}`}
           target="_blank"
@@ -252,6 +259,7 @@ const config = field.config ? JSON.parse(field.config) : {};
     </div>
   );
 })()}
+
 
 <style>
   /* CSS adicional para controlar whitespace en textareas */
