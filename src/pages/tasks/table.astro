@@ -434,102 +434,62 @@ if (taskCategory) {
         parentId: (row as HTMLElement).dataset.parentId,
         priority: (row as HTMLElement).dataset.priority,
         categoryId: (row as HTMLElement).dataset.categoryId,
-        completed: (row as HTMLElement).dataset.completed === 'true',
+        status: (row as HTMLElement).dataset.status,
         title: (row as HTMLElement).dataset.title,
-        dueDate: (row as HTMLElement).dataset.dueDate
+        dueDate: (row as HTMLElement).dataset.dueDate,
+        assigned: (row as HTMLElement).dataset.assigned
       }));
       filteredTasks = [...allTasks];
     });
 
-    // ORDENAMIENTO CORREGIDO
-    function sortTasks() {
-      if (!currentSort.direction || !currentSort.field) {
-        // Sin orden: restaurar orden original del DOM
-        const tbody = document.getElementById('taskTableBody')!;
-        allTasks.forEach(task => tbody.appendChild(task.element));
-        return;
-      }
+    const searchText = document.getElementById('searchText') as HTMLInputElement;
+    const filterStatus = document.getElementById('filterStatus') as HTMLSelectElement;
+    const filterPriority = document.getElementById('filterPriority') as HTMLSelectElement;
+    const filterCategory = document.getElementById('filterCategory') as HTMLSelectElement;
+    const filterAssigned = document.getElementById('filterAssigned') as HTMLInputElement;
 
-      const tbody = document.getElementById('taskTableBody')!;
-      
-      // Ordenar solo tareas principales (sin parentId)
-      const mainTasks = filteredTasks.filter(t => !t.parentId);
-      
-      mainTasks.sort((a, b) => {
-        let aVal: any, bVal: any;
-        
-        if (currentSort.field === 'title') {
-          aVal = a.title;
-          bVal = b.title;
-        } else if (currentSort.field === 'priority') {
-          const priorityOrder = { low: 1, medium: 2, high: 3, critical: 4 };
-          aVal = priorityOrder[a.priority as keyof typeof priorityOrder] || 0;
-          bVal = priorityOrder[b.priority as keyof typeof priorityOrder] || 0;
-        } else if (currentSort.field === 'due_date') {
-          aVal = a.dueDate || '9999-12-31';
-          bVal = b.dueDate || '9999-12-31';
-        }
-        
-        const comparison = aVal > bVal ? 1 : aVal < bVal ? -1 : 0;
-        return currentSort.direction === 'asc' ? comparison : -comparison;
+     function applyFilters() {
+      const search = searchText?.value.toLowerCase() || '';
+      const status = filterStatus?.value || '';
+      const priority = filterPriority?.value || '';
+      const category = filterCategory?.value || '';
+      const assigned = filterAssigned?.value.toLowerCase() || '';
+
+      filteredTasks = allTasks.filter(task => {
+        const matchesSearch = !search || task.title.includes(search);
+        const matchesStatus = !status || task.status === status;
+        const matchesPriority = !priority || task.priority === priority;
+        const matchesCategory = !category || task.categoryId === category;
+        const matchesAssigned = !assigned || task.assigned.toLowerCase().includes(assigned);
+
+        return matchesSearch && matchesStatus && matchesPriority && matchesCategory && matchesAssigned;
       });
-      
-      // Reordenar DOM manteniendo subtareas debajo de sus padres
-      mainTasks.forEach(mainTask => {
-        tbody.appendChild(mainTask.element);
-        
-        // Insertar subtareas inmediatamente después
-        const subtasks = allTasks.filter(t => t.parentId === mainTask.id);
-        subtasks.forEach(sub => tbody.appendChild(sub.element));
-      });
+
+      updateTable();
     }
 
-    // HEADERS CON ORDENAMIENTO CÍCLICO
-    document.querySelectorAll('[data-sort]').forEach(header => {
-      header.addEventListener('click', () => {
-        const sortBy = (header as HTMLElement).dataset.sort!;
-        const icon = header.querySelector('.sort-icon');
-        
-        // Resetear otros headers
-        document.querySelectorAll('[data-sort]').forEach(h => {
-          if (h !== header) {
-            const otherIcon = h.querySelector('.sort-icon');
-            if (otherIcon) {
-              (otherIcon as HTMLElement).style.opacity = '0.3';
-              (otherIcon as HTMLElement).style.transform = 'none';
-            }
-          }
-        });
-        
-        // Ciclar: null → asc → desc → null
-        if (currentSort.field === sortBy) {
-          if (currentSort.direction === null) {
-            currentSort.direction = 'asc';
-          } else if (currentSort.direction === 'asc') {
-            currentSort.direction = 'desc';
-          } else {
-            currentSort.direction = null;
-            currentSort.field = null;
-          }
-        } else {
-          currentSort.field = sortBy;
-          currentSort.direction = 'asc';
-        }
-        
-        // Actualizar icono visual
-        if (currentSort.direction === null) {
-          (icon as HTMLElement).style.opacity = '0.3';
-          (icon as HTMLElement).style.transform = 'none';
-        } else if (currentSort.direction === 'asc') {
-          (icon as HTMLElement).style.opacity = '1';
-          (icon as HTMLElement).style.transform = 'none';
-        } else {
-          (icon as HTMLElement).style.opacity = '1';
-          (icon as HTMLElement).style.transform = 'rotate(180deg)';
-        }
-        
-        sortTasks();
+    function updateTable() {
+      allTasks.forEach(task => {
+        (task.element as HTMLElement).style.display = 
+          filteredTasks.includes(task) ? '' : 'none';
       });
+
+      document.getElementById('visibleCount')!.textContent = String(filteredTasks.length);
+    }
+
+    searchText?.addEventListener('input', applyFilters);
+    filterStatus?.addEventListener('change', applyFilters);
+    filterPriority?.addEventListener('change', applyFilters);
+    filterCategory?.addEventListener('change', applyFilters);
+    filterAssigned?.addEventListener('input', applyFilters);
+
+    document.getElementById('clearFilters')?.addEventListener('click', () => {
+      if (searchText) searchText.value = '';
+      if (filterStatus) filterStatus.value = '';
+      if (filterPriority) filterPriority.value = '';
+      if (filterCategory) filterCategory.value = '';
+      if (filterAssigned) filterAssigned.value = '';
+      applyFilters();
     });
 
     document.querySelectorAll('.expand-btn').forEach(btn => {
@@ -543,76 +503,239 @@ if (taskCategory) {
         
         if (isExpanded) {
           // Colapsar
-          expandedTasks.delete(taskId);
+          hideSubtasksRecursive(taskId);
+          
           icon?.classList.remove('rotate-90');
           
-          const subtasks = document.querySelectorAll(`[data-parent-id="${taskId}"]`);
-          subtasks.forEach(sub => {
-            (sub as HTMLElement).style.maxHeight = '0';
-            (sub as HTMLElement).style.opacity = '0';
-            setTimeout(() => (sub as HTMLElement).remove(), 300);
-          });
+          // expandedTasks.delete(taskId);
+          // const subtasks = document.querySelectorAll(`[data-parent-id="${taskId}"]`);
+          // subtasks.forEach(sub => {
+          //   (sub as HTMLElement).style.maxHeight = '0';
+          //   (sub as HTMLElement).style.opacity = '0';
+          //   setTimeout(() => (sub as HTMLElement).remove(), 300);
+          // });
           
         } else {
           // Expandir
-          expandedTasks.add(taskId);
+          
           icon?.classList.add('rotate-90');
+
+          // Buscar si ya existen subtareas cargadas
+          const existingSubtasks = document.querySelectorAll(`[data-parent-id="${taskId}"]`);
           
-          // Mostrar loading
-          const loadingRow = document.createElement('tr');
-          loadingRow.className = 'subtask-loading bg-gray-50';
-          loadingRow.innerHTML = `
-            <td colspan="8" class="px-6 py-3 text-center text-sm text-gray-500">
-              <svg class="animate-spin w-4 h-4 inline-block mr-2" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-              Cargando subtareas...
-            </td>
-          `;
-          row.after(loadingRow);
-          
-          try {
-            const response = await fetch(`/api/tasks?parent_id=${taskId}`);
-            const subtasks = await response.json();
-            
-            loadingRow.remove();
-            
-            if (subtasks.length === 0) {
-              // Esto no debería pasar si el contador es correcto
-              const emptyRow = document.createElement('tr');
-              emptyRow.className = 'subtask-row bg-gray-50';
-              emptyRow.dataset.parentId = taskId;
-              emptyRow.innerHTML = `
-                <td colspan="8" class="px-6 py-3 text-center text-sm text-gray-500 italic">
-                  No hay subtareas
-                </td>
-              `;
-              row.after(emptyRow);
-            } else {
-              let insertAfter = row;
-              subtasks.forEach((subtask: any, index: number) => {
-                const subRow = createSubtaskRow(subtask, taskId, index);
-                insertAfter.after(subRow);
-                insertAfter = subRow;
-                
-                setTimeout(() => {
-                  subRow.style.maxHeight = '100px';
-                  subRow.style.opacity = '1';
-                }, index * 50);
-              });
-            }
-          } catch (error) {
-            console.error('Error loading subtasks:', error);
-            loadingRow.innerHTML = `
-              <td colspan="8" class="px-6 py-3 text-center text-sm text-red-600">
-                Error al cargar subtareas
-              </td>
-            `;
+          if (existingSubtasks.length === 0) {
+            // Cargar subtareas por primera vez
+            await loadSubtasks(taskId, row!);
+          } else {
+            // Mostrar subtareas existentes
+            existingSubtasks.forEach(sub => {
+              (sub as HTMLElement).style.display = '';
+            });
           }
+          
+          // // Mostrar loading
+          // expandedTasks.add(taskId);
+          // const loadingRow = document.createElement('tr');
+          // loadingRow.className = 'subtask-loading bg-gray-50';
+          // loadingRow.innerHTML = `
+          //   <td colspan="8" class="px-6 py-3 text-center text-sm text-gray-500">
+          //     <svg class="animate-spin w-4 h-4 inline-block mr-2" fill="none" viewBox="0 0 24 24">
+          //       <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          //       <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          //     </svg>
+          //     Cargando subtareas...
+          //   </td>
+          // `;
+          // row.after(loadingRow);
+          
+          // try {
+          //   const response = await fetch(`/api/tasks?parent_id=${taskId}`);
+          //   const subtasks = await response.json();
+            
+          //   loadingRow.remove();
+            
+          //   if (subtasks.length === 0) {
+          //     // Esto no debería pasar si el contador es correcto
+          //     const emptyRow = document.createElement('tr');
+          //     emptyRow.className = 'subtask-row bg-gray-50';
+          //     emptyRow.dataset.parentId = taskId;
+          //     emptyRow.innerHTML = `
+          //       <td colspan="8" class="px-6 py-3 text-center text-sm text-gray-500 italic">
+          //         No hay subtareas
+          //       </td>
+          //     `;
+          //     row.after(emptyRow);
+          //   } else {
+          //     let insertAfter = row;
+          //     subtasks.forEach((subtask: any, index: number) => {
+          //       const subRow = createSubtaskRow(subtask, taskId, index);
+          //       insertAfter.after(subRow);
+          //       insertAfter = subRow;
+                
+          //       setTimeout(() => {
+          //         subRow.style.maxHeight = '100px';
+          //         subRow.style.opacity = '1';
+          //       }, index * 50);
+          //     });
+          //   }
+          // } catch (error) {
+          //   console.error('Error loading subtasks:', error);
+          //   loadingRow.innerHTML = `
+          //     <td colspan="8" class="px-6 py-3 text-center text-sm text-red-600">
+          //       Error al cargar subtareas
+          //     </td>
+          //   `;
+          // }
         }
       });
     });
+
+    function hideSubtasksRecursive(parentId: string) {
+      const subtasks = document.querySelectorAll(`[data-parent-id="${parentId}"]`);
+      subtasks.forEach(sub => {
+        (sub as HTMLElement).style.display = 'none';
+        
+        // Colapsar el icono si tiene
+        const expandBtn = sub.querySelector('.expand-btn');
+        const icon = expandBtn?.querySelector('.expand-icon');
+        if (icon?.classList.contains('rotate-90')) {
+          icon.classList.remove('rotate-90');
+        }
+        
+        // Ocultar recursivamente las subtareas de esta subtarea
+        const subTaskId = (sub as HTMLElement).dataset.taskId;
+        if (subTaskId) {
+          hideSubtasksRecursive(subTaskId);
+        }
+      });
+    }
+
+     async function loadSubtasks(parentId: string, parentRow: Element, level: number = 1) {
+      try {
+        const response = await fetch(`/api/tasks?parent_id=${parentId}`);
+        const subtasks = await response.json();
+        
+        subtasks.forEach((subtask: any) => {
+          const newRow = document.createElement('tr');
+          const indentClass = `subtask-row bg-gray-50 border-l-4 border-indigo-${Math.min(200 + level * 100, 600)}`;
+          newRow.className = indentClass;
+          newRow.dataset.parentId = parentId;
+          newRow.dataset.taskId = subtask.id;
+          newRow.dataset.level = String(level);
+          
+          const statusColors = {
+            todo: 'bg-gray-100 text-gray-700',
+            in_progress: 'bg-blue-100 text-blue-700',
+            done: 'bg-green-100 text-green-700',
+            blocked: 'bg-red-100 text-red-700'
+          };
+          
+          const statusIcons = {
+            todo: '📝',
+            in_progress: '🔄',
+            done: '✅',
+            blocked: '🚫'
+          };
+          
+          const status = subtask.data.status || 'todo';
+          const indent = '&nbsp;'.repeat(level * 4);
+          
+          // Verificar si esta subtarea tiene subtareas
+          const hasChildren = subtask.subtasks && subtask.subtasks.length > 0;
+          
+          newRow.innerHTML = `
+            <td class="px-6 py-4">
+              ${hasChildren ? `
+                <button class="expand-btn text-gray-400 hover:text-gray-600 transition" data-task-id="${subtask.id}">
+                  <svg class="w-4 h-4 expand-icon transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+              ` : ''}
+            </td>
+            <td class="px-6 py-4">
+              <input type="checkbox" class="task-select rounded" data-task-id="${subtask.id}" />
+            </td>
+            <td class="px-6 py-4">
+              <div class="flex items-center gap-2" style="padding-left: ${level * 0.5}rem;">
+                <span class="text-gray-400">${'└─'+'─'.repeat(Math.min(level - 1, 3))}</span>
+                <a href="/tasks/${subtask.id}" class="text-gray-700 hover:text-indigo-600 ${status === 'done' ? 'line-through' : ''}">${subtask.data.title}</a>
+              </div>
+            </td>
+            <td class="px-6 py-4">
+              <span class="px-2 py-1 rounded text-xs font-medium ${statusColors[status as keyof typeof statusColors]}">
+                ${statusIcons[status as keyof typeof statusIcons]} ${status}
+              </span>
+            </td>
+            <td class="px-6 py-4">
+              <span class="px-2 py-1 rounded text-xs font-medium ${
+                subtask.data.priority === 'critical' ? 'bg-red-100 text-red-700' :
+                subtask.data.priority === 'high' ? 'bg-orange-100 text-orange-700' :
+                subtask.data.priority === 'medium' ? 'bg-blue-100 text-blue-700' :
+                'bg-gray-100 text-gray-600'
+              }">
+                ${subtask.data.priority}
+              </span>
+            </td>
+            <td class="px-6 py-4 text-sm text-gray-500">-</td>
+            <td class="px-6 py-4 text-sm text-gray-500">${subtask.data.assigned_to || '-'}</td>
+            <td class="px-6 py-4 text-sm text-gray-500">${subtask.data.due_date ? new Date(subtask.data.due_date).toLocaleDateString('es-ES') : '-'}</td>
+            <td class="px-6 py-3">
+              ${subtask.data.tags?.slice(0, 2).map((tag: string) => `
+                <span class="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs">#${tag}</span>
+              `).join('') || ''}
+            </td>
+            <td class="px-6 py-4">
+              <button class="delete-task text-red-600 hover:text-red-800 text-sm" data-task-id="${subtask.id}">Eliminar</button>
+            </td>
+          `;
+          
+          parentRow.after(newRow);
+          
+          // Añadir event listener al nuevo botón de expandir si existe
+          if (hasChildren) {
+            const newExpandBtn = newRow.querySelector('.expand-btn');
+            newExpandBtn?.addEventListener('click', async (e) => {
+              e.stopPropagation();
+              const subTaskId = (newExpandBtn as HTMLElement).dataset.taskId!;
+              const icon = newExpandBtn.querySelector('.expand-icon');
+              
+              const isExpanded = icon?.classList.contains('rotate-90');
+              if (isExpanded) {
+                icon?.classList.remove('rotate-90');
+                hideSubtasksRecursive(subTaskId);
+              } else {
+                icon?.classList.add('rotate-90');
+                
+                const existingSubSubtasks = document.querySelectorAll(`[data-parent-id="${subTaskId}"]`);
+                if (existingSubSubtasks.length === 0) {
+                  await loadSubtasks(subTaskId, newRow, level + 1);
+                } else {
+                  existingSubSubtasks.forEach(sub => {
+                    (sub as HTMLElement).style.display = '';
+                  });
+                }
+              }
+            });
+          }
+          
+          // Actualizar allTasks
+          allTasks.push({
+            element: newRow,
+            id: subtask.id,
+            parentId: parentId,
+            priority: subtask.data.priority,
+            categoryId: '',
+            status: status,
+            title: subtask.data.title.toLowerCase(),
+            dueDate: subtask.data.due_date || '',
+            assigned: subtask.data.assigned_to || ''
+          });
+        });
+      } catch (error) {
+        console.error('Error loading subtasks:', error);
+      }
+    }
 
 function createSubtaskRow(subtask: any, parentId: string, index: number): HTMLTableRowElement {
   const row = document.createElement('tr');

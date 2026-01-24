@@ -102,6 +102,49 @@ document.querySelectorAll('.editable-field').forEach(field => {
 // 3. MANEJO DE LISTAS DINÁMICAS
 // ============================================
 
+document.querySelectorAll('.add-list-item-relation').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const fieldName = (btn as HTMLElement).dataset.field!;
+    const multiple = (btn as HTMLElement).dataset.multiple!;
+    const input = document.querySelector(`[data-field-select-relation="${fieldName}"]`) as HTMLInputElement;
+    console.log(input)
+
+    if (input && input.value.trim()) {
+      if (!currentData[fieldName]) currentData[fieldName] = [];
+      if (currentData[fieldName].find((item: string) => item === input.value.trim())) {
+        alert("You can't relation again the same item");
+        return;
+      }
+      if (multiple === 'true') {
+        currentData[fieldName].push(input.value.trim());
+      } else {
+        if (currentData[fieldName].length > 0 && confirm("Are you gonna replace your current data for "+input.options[input.selectedIndex].text+", are you sure?")) currentData[fieldName] = [input.value.trim()];
+        
+        if (currentData[fieldName].length === 0) currentData[fieldName] = [input.value.trim()];
+      }
+
+      input.value = '';
+      hasChanges = true;
+      document.getElementById('saveBtn')?.classList.remove('hidden');
+      saveChangesQuietly();
+    }
+  });
+});
+
+document.querySelectorAll('.remove-list-item-relation').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const fieldName = (btn as HTMLElement).dataset.field!;
+    const item = (btn as HTMLElement).dataset.id!;
+    
+    if (currentData[fieldName]) {
+      currentData[fieldName] = currentData[fieldName].filter((i: string) => i !== item);
+      hasChanges = true;
+      document.getElementById('saveBtn')?.classList.remove('hidden');
+      saveChangesQuietly();
+    }
+  });
+});
+
 document.querySelectorAll('.add-list-item').forEach(btn => {
   btn.addEventListener('click', () => {
     const fieldName = (btn as HTMLElement).dataset.field!;

@@ -199,7 +199,7 @@ const config = field.config ? JSON.parse(field.config) : {};
                   )}
                 </div>
                 <button 
-                  class="remove-relation opacity-0 group-hover:opacity-100 text-red-600 hover:text-red-800 transition ml-2 flex-shrink-0"
+                  class="remove-list-item-relation opacity-0 group-hover:opacity-100 text-red-600 hover:text-red-800 transition ml-2 flex-shrink-0"
                   data-field={field.name}
                   data-id={relatedId}
                   type="button"
@@ -219,7 +219,7 @@ const config = field.config ? JSON.parse(field.config) : {};
       <div class="flex gap-2">
         <select 
           class="relation-select flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-          data-field={field.name}
+          data-field-select-relation={field.name}
           data-category={relatedCategoryId}
           data-multiple={allowMultiple ? 'true' : 'false'}
           data-self-relation={isSelfRelation ? 'true' : 'false'}
@@ -230,8 +230,10 @@ const config = field.config ? JSON.parse(field.config) : {};
         </select>
         
         <button
-        class="add-list-item px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-medium transition"
+        class="add-list-item-relation px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-medium transition"
         data-field={field.name}
+        data-target-category={relatedCategoryId}
+        data-multiple={allowMultiple ? 'true' : 'false'}
         type="button"
         >
           +
