@@ -106,7 +106,7 @@ document.querySelectorAll('.add-list-item-relation').forEach(btn => {
   btn.addEventListener('click', () => {
     const fieldName = (btn as HTMLElement).dataset.field!;
     const multiple = (btn as HTMLElement).dataset.multiple!;
-    const input = document.querySelector(`[data-field-select-relation="${fieldName}"]`) as HTMLInputElement;
+    const input = document.querySelector(`[data-field-select-relation="${fieldName}"]`) as HTMLSelectElement;
     console.log(input)
 
     if (input && input.value.trim()) {

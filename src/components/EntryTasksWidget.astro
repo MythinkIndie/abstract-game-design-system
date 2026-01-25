@@ -191,8 +191,8 @@ if (taskCategory) {
   // Desvincular tarea
   document.querySelectorAll('.unlink-task').forEach(btn => {
     btn.addEventListener('click', async (e) => {
-      const target = e.currentTarget as HTMLElement;
-      const taskId = target.dataset.taskId!;
+      const target = e.currentTarget;
+      const taskId = target.dataset.taskId;
       
       if (!confirm('¿Desvincular esta tarea de la entrada?')) return;
       
@@ -204,7 +204,7 @@ if (taskCategory) {
         
         // Quitar entry_id de specific_entry_ids
         let specificIds = taskData.specific_entry_ids || [];
-        specificIds = specificIds.filter((id: string) => id !== entryId);
+        specificIds = specificIds.filter(id => id !== entryId);
         
         const response = await fetch('/api/tasks', {
           method: 'PUT',
@@ -225,7 +225,7 @@ if (taskCategory) {
     });
   });
 
-  function showToast(message: string) {
+  function showToast(message) {
     const toast = document.createElement('div');
     toast.className = 'fixed bottom-4 right-4 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg z-50';
     toast.textContent = message;

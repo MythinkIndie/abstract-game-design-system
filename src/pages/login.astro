@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Iniciar Sesión - Sistema de Diseño</title>
+</head>
+<body class="bg-gradient-to-br from-indigo-500 to-purple-600 min-h-screen flex items-center justify-center p-4">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8">
+    <div class="text-center mb-8">
+      <div class="inline-flex items-center justify-center w-16 h-16 bg-indigo-100 rounded-full mb-4">
+        <svg class="w-8 h-8 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+        </svg>
+      </div>
+      <h1 class="text-2xl font-bold text-gray-900 mb-2">Bienvenido</h1>
+      <p class="text-gray-600 text-sm">Ingresa tus credenciales para continuar</p>
+    </div>
+
+    <form id="loginForm" class="space-y-6">
+      <div>
+        <label for="username" class="block text-sm font-medium text-gray-700 mb-2">
+          Nombre de Usuario
+        </label>
+        <input 
+          type="text" 
+          id="username" 
+          name="username"
+          required
+          autocomplete="username"
+          class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+          placeholder="Tu nombre"
+        />
+      </div>
+
+      <div>
+        <label for="password" class="block text-sm font-medium text-gray-700 mb-2">
+          Contraseña
+        </label>
+        <input 
+          type="password" 
+          id="password" 
+          name="password"
+          required
+          autocomplete="current-password"
+          class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+          placeholder="••••••••"
+        />
+      </div>
+
+      <div id="errorMessage" class="hidden p-4 bg-red-50 border border-red-200 rounded-lg">
+        <p class="text-sm text-red-600 flex items-center gap-2">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span id="errorText"></span>
+        </p>
+      </div>
+
+      <button 
+        type="submit"
+        id="loginBtn"
+        class="w-full px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition font-medium shadow-lg hover:shadow-xl"
+      >
+        Iniciar Sesión
+      </button>
+    </form>
+
+    <div class="mt-6 text-center">
+      <p class="text-xs text-gray-500">
+        Sistema de Diseño de Videojuegos • Privado
+      </p>
+    </div>
+  </div>
+
+  <script>
+    const form = document.getElementById('loginForm') as HTMLFormElement;
+    const errorMessage = document.getElementById('errorMessage')!;
+    const errorText = document.getElementById('errorText')!;
+    const loginBtn = document.getElementById('loginBtn')!;
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const username = (document.getElementById('username') as HTMLInputElement).value;
+      const password = (document.getElementById('password') as HTMLInputElement).value;
+      
+      // Ocultar error anterior
+      errorMessage.classList.add('hidden');
+      
+      // Deshabilitar botón
+      loginBtn.textContent = 'Verificando...';
+      loginBtn.setAttribute('disabled', 'true');
+      
+      try {
+        const response = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+          loginBtn.textContent = '✓ Acceso concedido';
+          loginBtn.classList.remove('bg-indigo-600', 'hover:bg-indigo-700');
+          loginBtn.classList.add('bg-green-600');
+          
+          // Redirigir después de un momento
+          setTimeout(() => {
+            window.location.href = '/';
+          }, 500);
+        } else {
+          showError(data.error || 'Error al iniciar sesión');
+          loginBtn.textContent = 'Iniciar Sesión';
+          loginBtn.removeAttribute('disabled');
+        }
+      } catch (error) {
+        showError('Error de conexión. Intenta nuevamente.');
+        loginBtn.textContent = 'Iniciar Sesión';
+        loginBtn.removeAttribute('disabled');
+      }
+    });
+    
+    function showError(message: string) {
+      errorText.textContent = message;
+      errorMessage.classList.remove('hidden');
+    }
+  </script>
+</body>
+</html>

@@ -507,14 +507,6 @@ if (taskCategory) {
           
           icon?.classList.remove('rotate-90');
           
-          // expandedTasks.delete(taskId);
-          // const subtasks = document.querySelectorAll(`[data-parent-id="${taskId}"]`);
-          // subtasks.forEach(sub => {
-          //   (sub as HTMLElement).style.maxHeight = '0';
-          //   (sub as HTMLElement).style.opacity = '0';
-          //   setTimeout(() => (sub as HTMLElement).remove(), 300);
-          // });
-          
         } else {
           // Expandir
           
@@ -532,60 +524,6 @@ if (taskCategory) {
               (sub as HTMLElement).style.display = '';
             });
           }
-          
-          // // Mostrar loading
-          // expandedTasks.add(taskId);
-          // const loadingRow = document.createElement('tr');
-          // loadingRow.className = 'subtask-loading bg-gray-50';
-          // loadingRow.innerHTML = `
-          //   <td colspan="8" class="px-6 py-3 text-center text-sm text-gray-500">
-          //     <svg class="animate-spin w-4 h-4 inline-block mr-2" fill="none" viewBox="0 0 24 24">
-          //       <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-          //       <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-          //     </svg>
-          //     Cargando subtareas...
-          //   </td>
-          // `;
-          // row.after(loadingRow);
-          
-          // try {
-          //   const response = await fetch(`/api/tasks?parent_id=${taskId}`);
-          //   const subtasks = await response.json();
-            
-          //   loadingRow.remove();
-            
-          //   if (subtasks.length === 0) {
-          //     // Esto no debería pasar si el contador es correcto
-          //     const emptyRow = document.createElement('tr');
-          //     emptyRow.className = 'subtask-row bg-gray-50';
-          //     emptyRow.dataset.parentId = taskId;
-          //     emptyRow.innerHTML = `
-          //       <td colspan="8" class="px-6 py-3 text-center text-sm text-gray-500 italic">
-          //         No hay subtareas
-          //       </td>
-          //     `;
-          //     row.after(emptyRow);
-          //   } else {
-          //     let insertAfter = row;
-          //     subtasks.forEach((subtask: any, index: number) => {
-          //       const subRow = createSubtaskRow(subtask, taskId, index);
-          //       insertAfter.after(subRow);
-          //       insertAfter = subRow;
-                
-          //       setTimeout(() => {
-          //         subRow.style.maxHeight = '100px';
-          //         subRow.style.opacity = '1';
-          //       }, index * 50);
-          //     });
-          //   }
-          // } catch (error) {
-          //   console.error('Error loading subtasks:', error);
-          //   loadingRow.innerHTML = `
-          //     <td colspan="8" class="px-6 py-3 text-center text-sm text-red-600">
-          //       Error al cargar subtareas
-          //     </td>
-          //   `;
-          // }
         }
       });
     });
@@ -646,10 +584,13 @@ if (taskCategory) {
           newRow.innerHTML = `
             <td class="px-6 py-4">
               ${hasChildren ? `
-                <button class="expand-btn text-gray-400 hover:text-gray-600 transition" data-task-id="${subtask.id}">
+                <button class="relative expand-btn text-gray-400 hover:text-gray-600 transition" data-task-id="${subtask.id}">
                   <svg class="w-4 h-4 expand-icon transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
                   </svg>
+                  <span class="absolute -top-2 -right-2 w-3 h-3 bg-indigo-600 text-white text-xs rounded-full flex items-center justify-center">
+                    ${subtask.subtasks.length}
+                  </span>
                 </button>
               ` : ''}
             </td>

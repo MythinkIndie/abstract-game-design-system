@@ -6,8 +6,6 @@ const { id } = Astro.params;
 
 const task = db.prepare('SELECT * FROM entries WHERE id = ?').get(id);
 
-console.log(task);
-
 if (!task) {
   return Astro.redirect('/tasks');
 }
@@ -47,17 +45,37 @@ if (taskData.related_category_id) {
     .all(taskData.related_category_id);
 }
 
-const taskFields = db.prepare('SELECT * FROM fields WHERE category_id = ?')
-  .all(taskCategory.id) as any[];
+const taskStatuses = db.prepare('SELECT * FROM task_statuses ORDER BY order_index').all() as any[];
 
-const statusField = taskFields.find((f: any) => f.name === 'status' && f.type === 'enum');
+let statusOptions: any[] = taskStatuses;
+if (statusOptions.length === 0) {
+  const taskFields = db.prepare('SELECT * FROM fields WHERE category_id = ?').all(taskCategory.id) as any[];
+  const statusField = taskFields.find((f: any) => f.name === 'status' && f.type === 'enum');
+  
+  if (statusField) {
+    try {
+      const config = JSON.parse(statusField.config);
+      if (config.options && Array.isArray(config.options)) {
+        statusOptions = config.options.map((opt: string) => ({
+          name: opt,
+          label: opt,
+          color: '#6b7280',
+          icon: '•'
+        }));
+      }
+    } catch {}
+  }
+}
 
-let statusOptions = ['todo', 'in_progress', 'done', 'blocked'];
-if (statusField) {
+const taskFields = db.prepare('SELECT * FROM fields WHERE category_id = ?').all(taskCategory.id) as any[];
+const priorityField = taskFields.find((f: any) => f.name === 'priority' && f.type === 'enum');
+
+let priorityOptions = ['low', 'medium', 'high', 'critical'];
+if (priorityField) {
   try {
-    const config = JSON.parse(statusField.config);
+    const config = JSON.parse(priorityField.config);
     if (config.options && Array.isArray(config.options)) {
-      statusOptions = config.options;
+      priorityOptions = config.options;
     }
   } catch {}
 }
@@ -132,9 +150,9 @@ if (statusField) {
               id="taskStatus"
               class="w-full px-3 py-2 border border-gray-300 rounded-lg"
             >
-              {statusOptions.map((option: string) => (
-                <option value={option} selected={option === (taskData.status || statusOptions[0])}>
-                  {option}
+              {statusOptions.map((option: any) => (
+                <option value={option.id} selected={option.id === (taskData.status || statusOptions[0].id)} class={`bg-[${option.color}] text-[${option.color}]`}>
+                  {option.icon || ""}{option.name}
                 </option>
               ))}
             </select>
@@ -425,47 +443,15 @@ if (statusField) {
       </div>
     </div>
   </main>
+</body>
+</html>
 
-  <script define:vars={{ db, statusOptions }}>
+<script define:vars={{ statusOptions }}>
 
     const taskId = document.body.dataset.taskId;
-    const task = db.prepare('SELECT * FROM entries WHERE id = ?').get(taskId);
-    const taskData = JSON.parse((task as any).data);
-    let tags: string[] = (taskData.tags || []).map((t: string) => `"${t}"`).join(',');
-
-    document.querySelectorAll('.remove-tag').forEach(btn => {
-      tags.push((btn as HTMLElement).dataset.tag!);
-    });
-
-    // Gestión de etiquetas
-    const tagInput = document.getElementById('tagInput') as HTMLInputElement;
-    const tagsList = document.getElementById('tagsList')!;
-
-    document.getElementById('addTagBtn')?.addEventListener('click', () => {
-      const value = tagInput.value.trim().toLowerCase();
-      if (!value || tags.includes(value)) return;
-
-      tags.push(value);
-      addTagToUI(value);
-      tagInput.value = '';
-    });
-
-    function addTagToUI(tag: string) {
-      const span = document.createElement('span');
-      span.className = 'px-3 py-1 bg-indigo-100 text-indigo-700 rounded-full text-sm flex items-center gap-2';
-      span.innerHTML = `#${tag} <button class="remove-tag hover:text-indigo-900" data-tag="${tag}">×</button>`;
-      
-      span.querySelector('.remove-tag')?.addEventListener('click', function() {
-        const tagToRemove = (this as HTMLElement).dataset.tag!;
-        tags = tags.filter(t => t !== tagToRemove);
-        span.remove();
-      });
-      
-      tagsList.appendChild(span);
-    }
 
     // Cambio de categoría relacionada -> recargar entradas
-    const categorySelect = document.getElementById('taskRelatedCategory') as HTMLSelectElement;
+    const categorySelect = document.getElementById('taskRelatedCategory');
     categorySelect?.addEventListener('change', async () => {
       const categoryId = categorySelect.value;
       
@@ -490,7 +476,7 @@ if (statusField) {
               Entradas específicas:
             </label>
             <div class="max-h-64 overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-200">
-              ${entries.map((entry: any) => `
+              ${entries.map((entry) => `
                 <label class="flex items-center gap-3 p-3 hover:bg-gray-50 cursor-pointer">
                   <input type="checkbox" class="entry-checkbox rounded" value="${entry.id}" />
                   <div class="flex-1">
@@ -507,7 +493,7 @@ if (statusField) {
     });
 
     // Toggle applies_to_all
-    const appliesToAll = document.getElementById('taskAppliesToAll') as HTMLInputElement;
+    const appliesToAll = document.getElementById('taskAppliesToAll');
     appliesToAll?.addEventListener('change', () => {
       const section = document.getElementById('specificEntriesSection');
       if (section) {
@@ -516,21 +502,22 @@ if (statusField) {
     });
 
     // Guardar cambios
-    document.getElementById('saveBtn')?.addEventListener('click', async () => {
+    document.getElementById('saveBtn').addEventListener('click', async () => {
       const selectedEntries = Array.from(document.querySelectorAll('.entry-checkbox:checked'))
-        .map(cb => (cb as HTMLInputElement).value);
+        .map(cb => cb.value);
       
+      console.log('Selected Entries:', selectedEntries);
+
       const updatedData = {
-        title: (document.getElementById('taskTitle') as HTMLInputElement).value,
-        description: (document.getElementById('taskDescription') as HTMLTextAreaElement).value,
-        status: (document.getElementById('taskStatus') as HTMLSelectElement).value,
-        priority: (document.getElementById('taskPriority') as HTMLSelectElement).value,
-        assigned_to: (document.getElementById('taskAssignedTo') as HTMLInputElement).value,
-        due_date: (document.getElementById('taskDueDate') as HTMLInputElement).value || null,
-        related_category_id: (document.getElementById('taskRelatedCategory') as HTMLSelectElement).value || null,
+        title: (document.getElementById('taskTitle')).value,
+        description: (document.getElementById('taskDescription')).value,
+        status: (document.getElementById('taskStatus')).value,
+        priority: (document.getElementById('taskPriority')).value,
+        assigned_to: (document.getElementById('taskAssignedTo')).value,
+        due_date: (document.getElementById('taskDueDate')).value || null,
+        related_category_id: (document.getElementById('taskRelatedCategory')).value || null,
         applies_to_all: appliesToAll.checked,
-        specific_entry_ids: appliesToAll.checked ? [] : selectedEntries,
-        tags: tags
+        specific_entry_ids: appliesToAll.checked ? [] : selectedEntries
       };
 
       try {
@@ -542,7 +529,7 @@ if (statusField) {
 
         if (response.ok) {
           // Mostrar feedback visual
-          const btn = document.getElementById('saveBtn')!;
+          const btn = document.getElementById('saveBtn');
           btn.textContent = '✅ Guardado';
           btn.classList.add('bg-green-600');
           btn.classList.remove('bg-indigo-600');
@@ -577,5 +564,3 @@ if (statusField) {
       }
     });
   </script>
-</body>
-</html>

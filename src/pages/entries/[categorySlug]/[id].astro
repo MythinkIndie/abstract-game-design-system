@@ -164,7 +164,7 @@ for (const field of fieldsWithCompletion) {
 
       <!-- Sidebar -->
       <div class="space-y-6">
-        <EntryTasksWidget entryId={id} categoryId={(category as any).id} />
+        <EntryTasksWidget entryId={id!} categoryId={(category as any).id} />
         <EntryAssignment assignedTo={entryData._assigned_to} />
         
         <!-- Información -->

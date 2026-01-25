@@ -275,7 +275,7 @@ if (relatedEntryId && relatedCategoryId) {
       
       // Event listener para eliminar
       span.querySelector('.remove-tag')?.addEventListener('click', function() {
-        const tagToRemove = (this as HTMLElement).dataset.tag!;
+        const tagToRemove = this.dataset.tag!;
         tags = tags.filter(t => t !== tagToRemove);
         tagsHidden.value = JSON.stringify(tags);
         span.remove();

@@ -163,6 +163,39 @@ export function initializeDatabase() {
     )
   `);
 
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  
+  // Tabla de sesiones
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS sessions (
+      id TEXT PRIMARY KEY,
+      token TEXT NOT NULL UNIQUE,
+      username TEXT NOT NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      last_activity TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  
+  // Tabla de logs de actividad (opcional pero útil)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS activity_logs (
+      id TEXT PRIMARY KEY,
+      username TEXT NOT NULL,
+      action TEXT NOT NULL,
+      resource_type TEXT,
+      resource_id TEXT,
+      details TEXT,
+      ip_address TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
   // ============================================
   // 5. ÍNDICES PARA OPTIMIZACIÓN
   // ============================================
@@ -181,6 +214,10 @@ export function initializeDatabase() {
     CREATE INDEX IF NOT EXISTS idx_entry_tags_entry ON entry_tags(entry_id);
     CREATE INDEX IF NOT EXISTS idx_entry_tags_tag ON entry_tags(tag_id);
     CREATE INDEX IF NOT EXISTS idx_tags_name ON tags(name);
+    CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token);
+    CREATE INDEX IF NOT EXISTS idx_sessions_username ON sessions(username);
+    CREATE INDEX IF NOT EXISTS idx_activity_logs_username ON activity_logs(username);
+    CREATE INDEX IF NOT EXISTS idx_activity_logs_created ON activity_logs(created_at);
   `);
   console.log('✅ Base de datos inicializada');
 }
@@ -391,7 +428,27 @@ export function seedDatabase() {
     now
   );
 
-  console.log('✅ Base de datos inicializada con datos de semilla');
+  // ========================================
+  // Autentificación
+  // ========================================
+
+  const privateMode = db.prepare('SELECT * FROM app_settings WHERE key = ?').get('private_mode');
+  
+  if (!privateMode) {
+    console.log('  ℹ️  Configurando modo privado por defecto...');
+    db.prepare('INSERT INTO app_settings (key, value) VALUES (?, ?)').run('private_mode', 'false');
+    console.log('  ✓ Modo privado desactivado por defecto');
+  }
+  
+  // Verificar si ya existe contraseña
+  const appPassword = db.prepare('SELECT * FROM app_settings WHERE key = ?').get('app_password');
+  
+  if (!appPassword) {
+    console.log('  ℹ️  No hay contraseña configurada');
+    console.log('  📌 Para activar el modo privado:');
+    console.log('     1. Ve a /api/auth/setup');
+    console.log('     2. Configura una contraseña segura');
+  }
   
   return {
     success: true,
