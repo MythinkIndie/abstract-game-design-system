@@ -1,5 +1,5 @@
 import type { APIRoute } from 'astro';
-import { db } from '../../lib/db';
+import { db } from '@/lib/db';
 
 export const GET: APIRoute = async ({ url }) => {
   try {
@@ -21,7 +21,7 @@ export const GET: APIRoute = async ({ url }) => {
       `;
       const categoryParams = [`%${query}%`, `%${query}%`, `%${query}%`];
       
-      results.categories = db.prepare(categoryQuery).all(...categoryParams);
+      results.categories = db!.prepare(categoryQuery).all(...categoryParams);
     }
     
     // BUSCAR ENTRADAS
@@ -42,7 +42,7 @@ export const GET: APIRoute = async ({ url }) => {
       
       entryQuery += ' ORDER BY e.updated_at DESC LIMIT 50';
       
-      const entries = db.prepare(entryQuery).all(...entryParams) as any[];
+      const entries = db!.prepare(entryQuery).all(...entryParams) as any[];
       
       // Filtrar por etiquetas si se especifican
       results.entries = entries.filter((entry: any) => {

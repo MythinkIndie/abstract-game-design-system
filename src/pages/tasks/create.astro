@@ -1,6 +1,6 @@
 ---
 // src/pages/tasks/create.astro
-import { db } from '../../lib/db';
+import { db } from '@/lib/db';
 
 const url = new URL(Astro.request.url);
 const parentTaskId = url.searchParams.get('parent_id');
@@ -9,22 +9,22 @@ const relatedEntryId = url.searchParams.get('entry_id');
 
 let parentTask = null;
 if (parentTaskId) {
-  parentTask = db.prepare('SELECT * FROM entries WHERE id = ?').get(parentTaskId) as any;
+  parentTask = db!.prepare('SELECT * FROM entries WHERE id = ?').get(parentTaskId) as any;
   if (parentTask) {
     parentTask.data = JSON.parse(parentTask.data);
   }
 }
 
-const categories = db.prepare('SELECT id, name, slug FROM categories WHERE is_system = 0 ORDER BY name').all();
+const categories = db!.prepare('SELECT id, name, slug FROM categories WHERE is_system = 0 ORDER BY name').all();
 
 // Si hay entrada específica, pre-seleccionarla
 let preSelectedEntry = null;
 let categoryEntries: any[] = [];
 if (relatedEntryId && relatedCategoryId) {
-  preSelectedEntry = db.prepare('SELECT id, title FROM entries WHERE id = ?').get(relatedEntryId);
-  categoryEntries = db.prepare('SELECT id, title FROM entries WHERE category_id = ? ORDER BY title').all(relatedCategoryId);
+  preSelectedEntry = db!.prepare('SELECT id, title FROM entries WHERE id = ?').get(relatedEntryId);
+  categoryEntries = db!.prepare('SELECT id, title FROM entries WHERE category_id = ? ORDER BY title').all(relatedCategoryId);
 } else if (relatedCategoryId) {
-  categoryEntries = db.prepare('SELECT id, title FROM entries WHERE category_id = ? ORDER BY title').all(relatedCategoryId);
+  categoryEntries = db!.prepare('SELECT id, title FROM entries WHERE category_id = ? ORDER BY title').all(relatedCategoryId);
 }
 ---
 
@@ -370,6 +370,7 @@ if (relatedEntryId && relatedCategoryId) {
         parent_task_id: (document.getElementById('parent_task_id') as HTMLInputElement)?.value || null,
         tags: JSON.parse(tagsHidden.value),
         assigned_to: (document.getElementById('assigned_to') as HTMLInputElement).value,
+        status: 'uiYExVUl6xaKmXKsyAx4p',
         comments: []
       };
 

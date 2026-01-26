@@ -4,18 +4,18 @@ import { db } from '@/lib/db';
 
 const { slug } = Astro.params;
 
-const category = db.prepare('SELECT * FROM categories WHERE slug = ?').get(slug);
+const category = db!.prepare('SELECT * FROM categories WHERE slug = ?').get(slug);
 
 if (!category) {
   return Astro.redirect('/categories');
 }
 
-const fields = db.prepare('SELECT * FROM fields WHERE category_id = ? ORDER BY field_order, created_at').all((category as any).id);
+const fields = db!.prepare('SELECT * FROM fields WHERE category_id = ? ORDER BY field_order, created_at').all((category as any).id);
 
 const inheritedFields = fields.filter((f: any) => {
   // Si la categoría hereda de Entity, verificar si el campo existe en Entity
   if ((category as any).inherits_from) {
-    const parentField = db.prepare(
+    const parentField = db!.prepare(
       'SELECT id FROM fields WHERE category_id = ? AND name = ?'
     ).get((category as any).inherits_from, f.name);
     return !!parentField;
@@ -25,7 +25,7 @@ const inheritedFields = fields.filter((f: any) => {
 
 const customFields = fields.filter((f: any) => !inheritedFields.includes(f));
 
-const entryCount = db.prepare('SELECT COUNT(*) as count FROM entries WHERE category_id = ?').get((category as any).id) as { count: number };
+const entryCount = db!.prepare('SELECT COUNT(*) as count FROM entries WHERE category_id = ?').get((category as any).id) as { count: number };
 ---
 
 <!DOCTYPE html>
@@ -222,13 +222,13 @@ const entryCount = db.prepare('SELECT COUNT(*) as count FROM entries WHERE categ
       </div>
       <form id="fieldForm" class="p-6 space-y-4">
         <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Etiqueta *</label>
+          <input type="text" id="fieldLabel" required class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="Ej: Puntos de Vida" />
+        </div>
+        <div>
           <label for="fieldName" class="block text-sm font-medium text-gray-700 mb-2">Nombre del Campo (opcional)</label>
           <input type="text" id="fieldName" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="Se auto-genera desde la etiqueta" />
           <p class="text-xs text-gray-500 mt-1">Formato: snake_case (ej: health_points)</p>
-        </div>
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-2">Etiqueta *</label>
-          <input type="text" id="fieldLabel" required class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="Ej: Puntos de Vida" />
         </div>
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-2">Tipo *</label>
@@ -338,7 +338,7 @@ const entryCount = db.prepare('SELECT COUNT(*) as count FROM entries WHERE categ
         });
         
         if (response.ok) {
-          window.location.reload();
+          window.location.href = window.location.pathname;
         } else {
           const error = await response.json();
           alert('Error: ' + error.error);

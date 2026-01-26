@@ -2,46 +2,42 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
-
-const dataDir = path.join(process.cwd(), 'data');
-
-if (!fs.existsSync(dataDir)) {
-  fs.mkdirSync(dataDir, { recursive: true });
-}
-
-// Ruta a la base de datos (en /data en la raíz del proyecto)
-const dbPath =  path.resolve(process.cwd(), 'data/game-design.db');
+import { initializeDatabase, seedDatabase } from '@/lib/seed';
 
 // Crear instancia de base de datos
-export const db = new Database(dbPath);
+export let db: Database.Database | null = null;
 
-// Habilitar claves foráneas
-db.pragma('foreign_keys = ON');
+export async function initDb() {
+  if (db) return db; // ya inicializada
 
-// Funciones helper para queries comunes
-export function queries() {
-  // Categorías
-  return {
-    getAllCategories: db.prepare('SELECT * FROM categories ORDER BY created_at'),
-    getCategoryById: db.prepare('SELECT * FROM categories WHERE id = ?'),
-    getCategoryBySlug: db.prepare('SELECT * FROM categories WHERE slug = ?'),
-    
-    // Campos
-    getFieldsByCategory: db.prepare('SELECT * FROM fields WHERE category_id = ? ORDER BY field_order, created_at'),
-    
-    // Entradas
-    getEntriesByCategory: db.prepare('SELECT * FROM entries WHERE category_id = ? ORDER BY created_at DESC'),
-    getEntryById: db.prepare('SELECT * FROM entries WHERE id = ?'),
-    
-    // Relaciones
-    getRelationsBySourceCategory: db.prepare('SELECT * FROM relations WHERE source_category_id = ?'),
-    getRelationsByTargetCategory: db.prepare('SELECT * FROM relations WHERE target_category_id = ?'),
+  const dataDir = path.join(process.cwd(), 'data');
+
+  if (!fs.existsSync(dataDir)) {
+    fs.mkdirSync(dataDir, { recursive: true });
   }
-};
+
+  // Ruta a la base de datos (en /data en la raíz del proyecto)
+  const dbPath = path.resolve(process.cwd(), 'data/game-design.db');
+
+  db = new Database(dbPath);
+
+  db.pragma('foreign_keys = ON');
+
+  // Inicializar tablas
+  const init = await initializeDatabase();
+  if (!init.success) throw new Error('DB initialization failed');
+
+  // Sembrar datos
+  const seed = await seedDatabase();
+  if (!seed.success) throw new Error('DB seeding failed');
+
+  console.log('✅ Base de datos lista');
+  return db;
+}
 
 // Función para cerrar la base de datos
 export function closeDatabase() {
-  db.close();
+  db?.close();
 }
 
 // Exportar la instancia de la base de datos

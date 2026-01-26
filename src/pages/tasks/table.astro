@@ -1,13 +1,15 @@
 ---
 // src/pages/tasks/table.astro
-import { db } from '../../lib/db';
+import { db } from '@/lib/db';
 
-const taskCategory = db.prepare('SELECT * FROM categories WHERE slug = ?').get('task') as any;
-const categories = db.prepare('SELECT id, name FROM categories WHERE is_system = 0 ORDER BY name').all();
+const taskCategory = db!.prepare('SELECT * FROM categories WHERE slug = ?').get('task') as any;
+const categories = db!.prepare('SELECT id, name FROM categories WHERE is_system = 0 ORDER BY name').all();
+
+const statuses = db!.prepare('SELECT * FROM task_statuses ORDER BY order_index').all();
 
 let tasks: any[] = [];
 if (taskCategory) {
-  const rawTasks = db.prepare(`
+  const rawTasks = db!.prepare(`
     SELECT * FROM entries 
     WHERE category_id = ? 
       AND (json_extract(data, '$.parent_task_id') IS NULL OR json_extract(data, '$.parent_task_id') = '')
@@ -18,7 +20,7 @@ if (taskCategory) {
     const data = JSON.parse(task.data);
     
     // Contar subtareas
-    const subtaskCount = db.prepare(`
+    const subtaskCount = db!.prepare(`
       SELECT COUNT(*) as count FROM entries 
       WHERE category_id = ? AND json_extract(data, '$.parent_task_id') = ?
     `).get(taskCategory.id, task.id) as any;
@@ -30,6 +32,20 @@ if (taskCategory) {
     };
   });
 }
+
+if (statuses) {
+  tasks = tasks.map(task => {
+
+    const statusData = statuses.find(status => (status as any).id === task.data.status);
+
+    return {
+      ...task,
+      statusData
+    };
+  });
+}
+
+console.log(tasks);
 ---
 
 <!DOCTYPE html>
@@ -117,8 +133,9 @@ if (taskCategory) {
           <label class="block text-xs font-medium text-gray-600 mb-1">Estado</label>
           <select id="filterStatus" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
             <option value="">Todos</option>
-            <option value="pending">Pendiente</option>
-            <option value="completed">Completado</option>
+            {statuses.map((status: any) => (
+              <option value={status.id}>{status.name}</option>
+            ))}
           </select>
         </div>
       </div>
@@ -203,13 +220,6 @@ if (taskCategory) {
                   const cat = categories.find((c: any) => c.id === task.data.related_category_id);
                   return cat ? (cat as any).name : '-';
                 })() : '-';
-                const statusIcons = {
-                  todo: '📝',
-                  in_progress: '🔄',
-                  done: '✅',
-                  blocked: '🚫'
-                };
-                const status = task.data.status || 'todo';
               
               return (
                 <tr 
@@ -218,7 +228,7 @@ if (taskCategory) {
                   data-parent-id={task.data.parent_task_id || ''}
                   data-priority={task.data.priority}
                   data-category-id={task.data.related_category_id || ''}
-                  data-status={status}
+                  data-status={task.statusData.id}
                   data-title={task.data.title.toLowerCase()}
                   data-due-date={task.data.due_date || ''}
                   data-assigned={task.data.assigned_to || ''}
@@ -266,8 +276,8 @@ if (taskCategory) {
                   </td>
 
                   <td class="px-6 py-4">
-                    <span class={`px-2 py-1 rounded text-xs font-medium`}>
-                      {statusIcons[status as keyof typeof statusIcons]} {status}
+                    <span class={`px-2 py-1 rounded text-xs font-medium text-[${task.statusData.color}]`}>
+                      {task.statusData.icon} {task.statusData.name}
                     </span>
                   </td>
                   
@@ -500,17 +510,17 @@ if (taskCategory) {
         const row = btn.closest('tr')!;
         
         const isExpanded = expandedTasks.has(taskId);
-        
         if (isExpanded) {
           // Colapsar
           hideSubtasksRecursive(taskId);
           
           icon?.classList.remove('rotate-90');
+          expandedTasks.delete(taskId);
           
         } else {
           // Expandir
-          
           icon?.classList.add('rotate-90');
+          expandedTasks.add(taskId);
 
           // Buscar si ya existen subtareas cargadas
           const existingSubtasks = document.querySelectorAll(`[data-parent-id="${taskId}"]`);
@@ -530,7 +540,9 @@ if (taskCategory) {
 
     function hideSubtasksRecursive(parentId: string) {
       const subtasks = document.querySelectorAll(`[data-parent-id="${parentId}"]`);
+      console.log(subtasks)
       subtasks.forEach(sub => {
+
         (sub as HTMLElement).style.display = 'none';
         
         // Colapsar el icono si tiene
@@ -561,23 +573,6 @@ if (taskCategory) {
           newRow.dataset.taskId = subtask.id;
           newRow.dataset.level = String(level);
           
-          const statusColors = {
-            todo: 'bg-gray-100 text-gray-700',
-            in_progress: 'bg-blue-100 text-blue-700',
-            done: 'bg-green-100 text-green-700',
-            blocked: 'bg-red-100 text-red-700'
-          };
-          
-          const statusIcons = {
-            todo: '📝',
-            in_progress: '🔄',
-            done: '✅',
-            blocked: '🚫'
-          };
-          
-          const status = subtask.data.status || 'todo';
-          const indent = '&nbsp;'.repeat(level * 4);
-          
           // Verificar si esta subtarea tiene subtareas
           const hasChildren = subtask.subtasks && subtask.subtasks.length > 0;
           
@@ -600,12 +595,12 @@ if (taskCategory) {
             <td class="px-6 py-4">
               <div class="flex items-center gap-2" style="padding-left: ${level * 0.5}rem;">
                 <span class="text-gray-400">${'└─'+'─'.repeat(Math.min(level - 1, 3))}</span>
-                <a href="/tasks/${subtask.id}" class="text-gray-700 hover:text-indigo-600 ${status === 'done' ? 'line-through' : ''}">${subtask.data.title}</a>
+                <a href="/tasks/${subtask.id}" class="text-gray-700 hover:text-indigo-600 ${subtask.statusData.name === 'Completado' ? 'line-through' : ''}">${subtask.data.title}</a>
               </div>
             </td>
             <td class="px-6 py-4">
-              <span class="px-2 py-1 rounded text-xs font-medium ${statusColors[status as keyof typeof statusColors]}">
-                ${statusIcons[status as keyof typeof statusIcons]} ${status}
+              <span class="px-2 py-1 rounded text-xs font-medium gb-[${subtask.statusData.color}]">
+                ${subtask.statusData.icon} ${subtask.statusData.name}
               </span>
             </td>
             <td class="px-6 py-4">
@@ -667,7 +662,7 @@ if (taskCategory) {
             parentId: parentId,
             priority: subtask.data.priority,
             categoryId: '',
-            status: status,
+            status: subtask.statusData.id,
             title: subtask.data.title.toLowerCase(),
             dueDate: subtask.data.due_date || '',
             assigned: subtask.data.assigned_to || ''
@@ -677,89 +672,6 @@ if (taskCategory) {
         console.error('Error loading subtasks:', error);
       }
     }
-
-function createSubtaskRow(subtask: any, parentId: string, index: number): HTMLTableRowElement {
-  const row = document.createElement('tr');
-  row.className = 'subtask-row transition-all duration-300';
-  row.dataset.parentId = parentId;
-  row.dataset.taskId = subtask.id;
-  row.style.maxHeight = '0';
-  row.style.opacity = '0';
-  row.style.overflow = 'hidden';
-  
-  const priorityColors = {
-    low: 'bg-gray-100 text-gray-700',
-    medium: 'bg-blue-100 text-blue-700',
-    high: 'bg-orange-100 text-orange-700',
-    critical: 'bg-red-100 text-red-700'
-  };
-
-  console.log(subtask)
-
-  if (subtask.subtasks.length > 0) {
-  const texttoAdd = "Ver " + subtask.subtasks.length.toString() + " subtarea"+(subtask.subtasks.length !== 1 ? 's' : '')
-  
-  row.innerHTML = `<td class="px-6 py-4 w-12">
-        <button 
-          class="expand-btn text-gray-400 hover:text-indigo-600 transition focus:outline-none relative"
-          data-task-id=${subtask.id}
-          title=${texttoAdd}
-        >
-          <svg class="w-5 h-5 expand-icon transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-          </svg>
-          <span class="absolute -top-1 -right-1 w-4 h-4 bg-indigo-600 text-white text-xs rounded-full flex items-center justify-center">
-            ${subtask.subtasks.length}
-          </span>
-        </button>
-        </td>`;
-  } else {
-    row.innerHTML = `<td class="px-6 py-4 w-12"><div class="w-5 h-5"></div></td>`;
-  }
-                    
-  row.innerHTML += `
-    <td class="px-6 py-3">
-      <input type="checkbox" class="task-select rounded" data-task-id="${subtask.id}" />
-    </td>
-    <td class="px-6 py-3">
-      <div class="flex items-center gap-3 pl-8">
-        <span class="text-indigo-400 font-bold">└─${'─'.repeat(Math.min(subtask.level-1, 4))}</span>
-        <a href="/tasks/${subtask.id}" class="text-sm text-gray-700 hover:text-indigo-600">
-          ${subtask.data.title}
-        </a>
-      </div>
-    </td>
-    <td class="px-6 py-4">
-      <span class='px-2 py-1 rounded text-xs font-medium'>
-        ${subtask.data.status}
-      </span>
-    </td>
-    <td class="px-6 py-3">
-      <span class="px-2 py-1 rounded text-xs font-medium ${priorityColors[subtask.data.priority as keyof typeof priorityColors]}">
-        ${subtask.data.priority}
-      </span>
-    </td>
-    <td class="px-6 py-3 text-sm text-gray-500">-</td>
-    <td class="px-6 py-4 text-sm text-gray-500">
-      ${subtask.data.assigned_to || '-'}
-    </td>
-    <td class="px-6 py-3 text-sm text-gray-500">
-      ${subtask.data.due_date ? new Date(subtask.data.due_date).toLocaleDateString('es-ES') : '-'}
-    </td>
-    <td class="px-6 py-3">
-      ${subtask.data.tags?.slice(0, 2).map((tag: string) => `
-        <span class="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs">#${tag}</span>
-      `).join('') || ''}
-    </td>
-    <td class="px-6 py-3">
-      <button class="delete-task text-red-600 hover:text-red-800 text-sm" data-task-id="${subtask.id}">
-        Eliminar
-      </button>
-    </td>
-  `;
-  
-  return row;
-}
   </script>
 </body>
 </html>

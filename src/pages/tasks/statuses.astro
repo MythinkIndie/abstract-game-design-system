@@ -1,7 +1,7 @@
 ---
-import { db } from '../../lib/db';
+import { db } from '@/lib/db';
 
-const statuses = db.prepare('SELECT * FROM task_statuses ORDER BY order_index').all();
+const statuses = db!.prepare('SELECT * FROM task_statuses ORDER BY order_index').all();
 ---
 
 <!DOCTYPE html>

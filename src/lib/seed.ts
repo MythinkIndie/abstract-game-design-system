@@ -4,7 +4,9 @@ import { nanoid } from 'nanoid';
 
 export function initializeDatabase() {
 
-  db.exec(`
+  db!.exec(`
+    BEGIN;
+
     CREATE TABLE IF NOT EXISTS categories (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL UNIQUE,
@@ -16,11 +18,8 @@ export function initializeDatabase() {
       color TEXT,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (inherits_from) REFERENCES categories(id)
-    )
-  `);
+    );
 
-  // Campos (fields)
-  db.exec(`
     CREATE TABLE IF NOT EXISTS fields (
       id TEXT PRIMARY KEY,
       category_id TEXT NOT NULL,
@@ -36,11 +35,20 @@ export function initializeDatabase() {
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE,
       UNIQUE(category_id, name)
-    )
-  `);
+    );
 
-  // Entradas
-  db.exec(`
+    CREATE TABLE IF NOT EXISTS task_statuses (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      slug TEXT NOT NULL UNIQUE,
+      color TEXT NOT NULL,
+      icon TEXT,
+      order_index INTEGER DEFAULT 0,
+      is_default INTEGER DEFAULT 0,
+      is_final INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE TABLE IF NOT EXISTS entries (
       id TEXT PRIMARY KEY,
       category_id TEXT NOT NULL,
@@ -51,11 +59,8 @@ export function initializeDatabase() {
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE,
       FOREIGN KEY (status_id) REFERENCES task_statuses(id)
-    )
-  `);
+    );
 
-  // Relaciones
-  db.exec(`
     CREATE TABLE IF NOT EXISTS relations (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
@@ -68,11 +73,8 @@ export function initializeDatabase() {
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (source_category_id) REFERENCES categories(id) ON DELETE CASCADE,
       FOREIGN KEY (target_category_id) REFERENCES categories(id) ON DELETE CASCADE
-    )
-  `);
+    );
 
-  // Tabla pivot para relaciones N:N
-  db.exec(`
     CREATE TABLE IF NOT EXISTS relation_links (
       id TEXT PRIMARY KEY,
       relation_id TEXT NOT NULL,
@@ -83,14 +85,8 @@ export function initializeDatabase() {
       FOREIGN KEY (source_entry_id) REFERENCES entries(id) ON DELETE CASCADE,
       FOREIGN KEY (target_entry_id) REFERENCES entries(id) ON DELETE CASCADE,
       UNIQUE(relation_id, source_entry_id, target_entry_id)
-    )
-  `);
+    );
 
-  // ============================================
-  // 2. SISTEMA DE COMPLETITUD DE CAMPOS
-  // ============================================
-
-  db.exec(`
     CREATE TABLE IF NOT EXISTS field_completion (
       id TEXT PRIMARY KEY,
       entry_id TEXT NOT NULL,
@@ -101,30 +97,8 @@ export function initializeDatabase() {
       FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE,
       FOREIGN KEY (field_id) REFERENCES fields(id) ON DELETE CASCADE,
       UNIQUE(entry_id, field_id)
-    )
-  `);
+    );
 
-  // ============================================
-  // 3. SISTEMA DE TAREAS
-  // ============================================
-
-  // Estados de tareas
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS task_statuses (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL UNIQUE,
-      slug TEXT NOT NULL UNIQUE,
-      color TEXT NOT NULL,
-      icon TEXT,
-      order_index INTEGER DEFAULT 0,
-      is_default INTEGER DEFAULT 0,
-      is_final INTEGER DEFAULT 0,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-
-  // Completitud de tareas por entrada
-  db.exec(`
     CREATE TABLE IF NOT EXISTS task_completion (
       id TEXT PRIMARY KEY,
       task_id TEXT NOT NULL,
@@ -135,24 +109,16 @@ export function initializeDatabase() {
       FOREIGN KEY (task_id) REFERENCES entries(id) ON DELETE CASCADE,
       FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE,
       UNIQUE(task_id, entry_id)
-    )
-  `);
+    );
 
-  // ============================================
-  // 4. SISTEMA DE ETIQUETAS
-  // ============================================
-
-  db.exec(`
     CREATE TABLE IF NOT EXISTS tags (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL UNIQUE,
       color TEXT,
       usage_count INTEGER DEFAULT 0,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
+    );
 
-  db.exec(`
     CREATE TABLE IF NOT EXISTS entry_tags (
       id TEXT PRIMARY KEY,
       entry_id TEXT NOT NULL,
@@ -160,30 +126,22 @@ export function initializeDatabase() {
       FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE,
       FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE,
       UNIQUE(entry_id, tag_id)
-    )
-  `);
+    );
 
-  db.exec(`
     CREATE TABLE IF NOT EXISTS app_settings (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL,
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-  
-  // Tabla de sesiones
-  db.exec(`
+    );
+
     CREATE TABLE IF NOT EXISTS sessions (
       id TEXT PRIMARY KEY,
       token TEXT NOT NULL UNIQUE,
       username TEXT NOT NULL,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       last_activity TEXT DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-  
-  // Tabla de logs de actividad (opcional pero útil)
-  db.exec(`
+    );
+
     CREATE TABLE IF NOT EXISTS activity_logs (
       id TEXT PRIMARY KEY,
       username TEXT NOT NULL,
@@ -193,14 +151,18 @@ export function initializeDatabase() {
       details TEXT,
       ip_address TEXT,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
-    )
+    );
+
+    COMMIT;
   `);
+
+  db!.exec('PRAGMA foreign_keys = ON;');
 
   // ============================================
   // 5. ÍNDICES PARA OPTIMIZACIÓN
   // ============================================
 
-  db.exec(`
+  db!.exec(`
     CREATE INDEX IF NOT EXISTS idx_fields_category ON fields(category_id);
     CREATE INDEX IF NOT EXISTS idx_entries_category ON entries(category_id);
     CREATE INDEX IF NOT EXISTS idx_entries_status ON entries(status_id);
@@ -220,12 +182,14 @@ export function initializeDatabase() {
     CREATE INDEX IF NOT EXISTS idx_activity_logs_created ON activity_logs(created_at);
   `);
   console.log('✅ Base de datos inicializada');
+
+  return { success: true, message: 'Database initialized' };
 }
 
 export function seedDatabase() {
 
   // Verificar si ya hay datos
-  const existingCategories = db.prepare('SELECT COUNT(*) as count FROM categories').get() as { count: number };
+  const existingCategories = db!.prepare('SELECT COUNT(*) as count FROM categories').get() as { count: number };
   
   if (existingCategories.count > 0) {
     console.log('⚠️  Base de datos ya tiene datos. Skipping seed.');
@@ -242,7 +206,7 @@ export function seedDatabase() {
   const systemId = nanoid();
   const entityId = nanoid();
 
-  const insertCategory = db.prepare(`
+  const insertCategory = db!.prepare(`
     INSERT INTO categories (id, name, slug, description, is_system, inherits_from, icon, color, created_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
@@ -301,7 +265,7 @@ export function seedDatabase() {
   // CAMPOS DE META
   // ========================================
   
-  const insertField = db.prepare(`
+  const insertField = db!.prepare(`
     INSERT INTO fields (id, category_id, name, label, type, required, unique_value, config, field_order, help_text)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
@@ -350,7 +314,7 @@ export function seedDatabase() {
   // 6. ESTADOS DE TAREAS
   // ============================================
 
-  const insertStatus = db.prepare(`
+  const insertStatus = db!.prepare(`
     INSERT INTO task_statuses (id, name, slug, color, icon, order_index, is_default, is_final, created_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
@@ -381,7 +345,7 @@ export function seedDatabase() {
   // ENTRADA META INICIAL
   // ========================================
   
-  const insertEntry = db.prepare(`
+  const insertEntry = db!.prepare(`
     INSERT INTO entries (id, category_id, title, data, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?)
   `);
@@ -432,16 +396,16 @@ export function seedDatabase() {
   // Autentificación
   // ========================================
 
-  const privateMode = db.prepare('SELECT * FROM app_settings WHERE key = ?').get('private_mode');
+  const privateMode = db!.prepare('SELECT * FROM app_settings WHERE key = ?').get('private_mode');
   
   if (!privateMode) {
     console.log('  ℹ️  Configurando modo privado por defecto...');
-    db.prepare('INSERT INTO app_settings (key, value) VALUES (?, ?)').run('private_mode', 'false');
+    db!.prepare('INSERT INTO app_settings (key, value) VALUES (?, ?)').run('private_mode', 'false');
     console.log('  ✓ Modo privado desactivado por defecto');
   }
   
   // Verificar si ya existe contraseña
-  const appPassword = db.prepare('SELECT * FROM app_settings WHERE key = ?').get('app_password');
+  const appPassword = db!.prepare('SELECT * FROM app_settings WHERE key = ?').get('app_password');
   
   if (!appPassword) {
     console.log('  ℹ️  No hay contraseña configurada');

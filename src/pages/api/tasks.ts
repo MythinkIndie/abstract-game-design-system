@@ -1,6 +1,6 @@
 // src/pages/api/tasks.ts
 import type { APIRoute } from 'astro';
-import { db } from '../../lib/db';
+import { db } from '@/lib/db';
 import { nanoid } from 'nanoid';
 
 // GET - Listar tareas con jerarquía
@@ -8,9 +8,8 @@ export const GET: APIRoute = async ({ url }) => {
   try {
     const categoryId = url.searchParams.get('category_id');
     const parentId = url.searchParams.get('parent_id');
-    const includeSubtasks = url.searchParams.get('include_subtasks') === 'true';
     
-    const taskCategory = db.prepare('SELECT id FROM categories WHERE slug = ?').get('task') as { id: string } | undefined;
+    const taskCategory = db!.prepare('SELECT id FROM categories WHERE slug = ?').get('task') as { id: string } | undefined;
     
     if (!taskCategory) {
       return new Response(JSON.stringify({ error: 'Task system not initialized' }), {
@@ -40,18 +39,23 @@ export const GET: APIRoute = async ({ url }) => {
     
     query += ' ORDER BY json_extract(data, \'$.order_index\') ASC, created_at ASC';
     
-    const tasks = db.prepare(query).all(...params) as any[];
+    const tasks = db!.prepare(query).all(...params) as any[];
+    const statuses = db!.prepare('SELECT * FROM task_statuses ORDER BY order_index').all();
     
     const parsedTasks = tasks.map(task => {
       const data = JSON.parse(task.data);
+
+      let statusData = statuses.find(status => (status as any).id === data.status);
+      statusData = typeof statusData === 'undefined' ? statuses[0] : statusData;
       
       // Si incluir subtareas, buscarlas recursivamente
       let subtasks: any[] = [];
       subtasks = getSubtasks(task.id, taskCategory.id);
-      
+
       return {
         ...task,
         data,
+        statusData,
         subtasks
       };
     });
@@ -72,7 +76,7 @@ export const GET: APIRoute = async ({ url }) => {
 
 // Función recursiva para obtener subtareas
 function getSubtasks(parentId: string, taskCategoryId: string): any[] {
-  const subtasks = db.prepare(`
+  const subtasks = db!.prepare(`
     SELECT * FROM entries 
     WHERE category_id = ? AND json_extract(data, '$.parent_task_id') = ?
     ORDER BY json_extract(data, '$.order_index') ASC, created_at ASC
@@ -112,7 +116,7 @@ export const POST: APIRoute = async ({ request }) => {
       });
     }
     
-    const taskCategory = db.prepare('SELECT id FROM categories WHERE slug = ?').get('task') as { id: string } | undefined;
+    const taskCategory = db!.prepare('SELECT id FROM categories WHERE slug = ?').get('task') as { id: string } | undefined;
     
     if (!taskCategory) {
       return new Response(JSON.stringify({ error: 'Task system not initialized' }), {
@@ -138,7 +142,7 @@ export const POST: APIRoute = async ({ request }) => {
       order_index
     };
     
-    db.prepare(`
+    db!.prepare(`
       INSERT INTO entries (id, category_id, title, data, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?)
     `).run(
@@ -150,7 +154,7 @@ export const POST: APIRoute = async ({ request }) => {
       now
     );
     
-    const newTask = db.prepare('SELECT * FROM entries WHERE id = ?').get(id) as any;
+    const newTask = db!.prepare('SELECT * FROM entries WHERE id = ?').get(id) as any;
     
     return new Response(JSON.stringify({
       ...newTask,
@@ -182,7 +186,7 @@ export const PUT: APIRoute = async ({ request }) => {
       });
     }
     
-    const existingTask = db.prepare('SELECT * FROM entries WHERE id = ?').get(id) as any;
+    const existingTask = db!.prepare('SELECT * FROM entries WHERE id = ?').get(id) as any;
     
     if (!existingTask) {
       return new Response(JSON.stringify({ error: 'Task not found' }), {
@@ -195,7 +199,7 @@ export const PUT: APIRoute = async ({ request }) => {
     const updatedData = { ...currentData, ...updates };
     const now = new Date().toISOString();
     
-    db.prepare(`
+    db!.prepare(`
       UPDATE entries 
       SET data = ?, updated_at = ?
       WHERE id = ?
@@ -205,7 +209,7 @@ export const PUT: APIRoute = async ({ request }) => {
       id
     );
     
-    const updatedTask = db.prepare('SELECT * FROM entries WHERE id = ?').get(id) as any;
+    const updatedTask = db!.prepare('SELECT * FROM entries WHERE id = ?').get(id) as any;
     
     return new Response(JSON.stringify({
       ...updatedTask,
@@ -254,12 +258,12 @@ export const DELETE: APIRoute = async ({ request }) => {
 };
 
 function deleteTaskAndSubtasks(taskId: string) {
-  const taskCategory = db.prepare('SELECT id FROM categories WHERE slug = ?').get('task') as { id: string } | undefined;
+  const taskCategory = db!.prepare('SELECT id FROM categories WHERE slug = ?').get('task') as { id: string } | undefined;
   
   if (!taskCategory) return;
   
   // Buscar subtareas
-  const subtasks = db.prepare(`
+  const subtasks = db!.prepare(`
     SELECT id FROM entries 
     WHERE category_id = ? AND json_extract(data, '$.parent_task_id') = ?
   `).all(taskCategory.id, taskId) as any[];
@@ -270,5 +274,5 @@ function deleteTaskAndSubtasks(taskId: string) {
   }
   
   // Eliminar la tarea
-  db.prepare('DELETE FROM entries WHERE id = ?').run(taskId);
+  db!.prepare('DELETE FROM entries WHERE id = ?').run(taskId);
 }

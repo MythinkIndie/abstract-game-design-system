@@ -1,11 +1,11 @@
 ---
 // src/pages/categories/index.astro
-import { db } from '../../lib/db';
+import { db } from '@/lib/db';
 
-const categories = db.prepare('SELECT * FROM categories ORDER BY is_system DESC, created_at').all();
+const categories = db!.prepare('SELECT * FROM categories ORDER BY is_system DESC, created_at').all();
 
 // Contar entradas por categoría
-const entryCounts = db.prepare(`
+const entryCounts = db!.prepare(`
   SELECT category_id, COUNT(*) as count 
   FROM entries 
   GROUP BY category_id

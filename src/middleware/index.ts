@@ -1,11 +1,14 @@
 import type { MiddlewareHandler } from 'astro';
-import { db } from '@/lib/db';
+import { db, initDb } from '@/lib/db';
 
 export const onRequest: MiddlewareHandler = async (context, next) => {
+
+  await initDb();
+
   const { url, cookies, redirect } = context;
   
   // Verificar si la aplicación está en modo privado
-  const appSettings = db.prepare('SELECT * FROM app_settings WHERE key = ?').get('private_mode') as any;
+  const appSettings = db!.prepare('SELECT * FROM app_settings WHERE key = ?').get('private_mode') as any;
   
   // Si no está en modo privado, permitir acceso
   if (!appSettings || appSettings.value !== 'true') {
@@ -27,7 +30,7 @@ export const onRequest: MiddlewareHandler = async (context, next) => {
   }
   
   // Verificar que el token sea válido
-  const session = db.prepare('SELECT * FROM sessions WHERE token = ? AND username = ?').get(authToken, username) as any;
+  const session = db!.prepare('SELECT * FROM sessions WHERE token = ? AND username = ?').get(authToken, username) as any;
   
   if (!session) {
     cookies.delete('auth_token');
@@ -41,14 +44,14 @@ export const onRequest: MiddlewareHandler = async (context, next) => {
   const diffDays = (now.getTime() - sessionDate.getTime()) / (1000 * 60 * 60 * 24);
   
   if (diffDays > 7) {
-    db.prepare('DELETE FROM sessions WHERE token = ?').run(authToken);
+    db!.prepare('DELETE FROM sessions WHERE token = ?').run(authToken);
     cookies.delete('auth_token');
     cookies.delete('username');
     return redirect('/login');
   }
   
   // Actualizar última actividad
-  db.prepare('UPDATE sessions SET last_activity = ? WHERE token = ?').run(new Date().toISOString(), authToken);
+  db!.prepare('UPDATE sessions SET last_activity = ? WHERE token = ?').run(new Date().toISOString(), authToken);
   
   // Continuar con la solicitud
   return next();

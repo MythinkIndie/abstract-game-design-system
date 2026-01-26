@@ -1,45 +1,53 @@
 ---
 // src/pages/tasks/index.astro
-import { db } from '../../lib/db';
+import { db } from '@/lib/db';
+import { undefined } from 'astro:schema';
 
-const taskCategory = db.prepare('SELECT * FROM categories WHERE slug = ?').get('task') as any;
+const taskCategory = db!.prepare('SELECT * FROM categories WHERE slug = ?').get('task') as any;
 
 // Obtener todas las categorías para el filtro
-const categories = db.prepare('SELECT id, name, slug FROM categories WHERE is_system = 0 ORDER BY name').all();
+const categories = db!.prepare('SELECT id, name, slug FROM categories WHERE is_system = 0 ORDER BY name').all();
+
+const statuses = db!.prepare('SELECT * FROM task_statuses ORDER BY order_index').all();
 
 // Función para obtener subtareas recursivamente
 function getSubtasksRecursive(parentId: string, level: number = 1): any[] {
-  const subtasks = db.prepare(`
+  const subtasks = db!.prepare(`
     SELECT * FROM entries 
     WHERE category_id = ? AND json_extract(data, '$.parent_task_id') = ?
-    ORDER BY json_extract(data, '$.order_index') ASC, created_at ASC
+    ORDER BY created_at ASC
   `).all(taskCategory.id, parentId) as any[];
   
   return subtasks.flatMap(task => {
     const data = JSON.parse(task.data);
+    let statusData = statuses.find(status => (status as any).id === data.status);
+    statusData = typeof statusData === 'undefined' ? statuses[0] : statusData;
     const children = getSubtasksRecursive(task.id, level + 1);
     return [
-      { ...task, data, level },
+      { ...task, statusData, data, level },
       ...children
     ];
   });
 }
 
 let tasks: any[] = [];
-if (taskCategory) {
+if (taskCategory && statuses) {
   // Obtener solo tareas raíz (sin padre)
-  const rootTasks = db.prepare(`
+  const rootTasks = db!.prepare(`
     SELECT * FROM entries 
     WHERE category_id = ? 
       AND (json_extract(data, '$.parent_task_id') IS NULL OR json_extract(data, '$.parent_task_id') = '')
-    ORDER BY json_extract(data, '$.order_index') ASC, created_at ASC
+    ORDER BY created_at ASC
   `).all(taskCategory.id) as any[];
-  
+
   // Expandir con subtareas
   tasks = rootTasks.flatMap(task => {
+    
     const data = JSON.parse(task.data);
+    const statusData = statuses.find(status => (status as any).id === data.status);
+
     return [
-      { ...task, data, level: 0 },
+      { ...task, statusData, data, level: 0 },
       ...getSubtasksRecursive(task.id)
     ];
   });
@@ -105,13 +113,22 @@ if (taskCategory) {
           </select>
         </div>
         <div class="flex-1 min-w-[200px]">
+          <label class="block text-xs font-medium text-gray-600 mb-1">Prioridad</label>
+          <select id="filterPriority" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+            <option value="">Todas</option>
+            <option value="low">⬇️ Baja</option>
+            <option value="medium">➡️ Media</option>
+            <option value="high">⬆️ Alta</option>
+            <option value="critical">🔥 Crítica</option>
+          </select>
+        </div>
+        <div class="flex-1 min-w-[200px]">
           <label class="block text-xs font-medium text-gray-600 mb-1">Filtrar por estado</label>
           <select id="statusFilter" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
             <option value="">Todos los estados</option>
-            <option value="todo">📝 Por Hacer</option>
-            <option value="in_progress">🔄 En Progreso</option>
-            <option value="done">✅ Completado</option>
-            <option value="blocked">🚫 Bloqueado</option>
+            {statuses.map((status: any) => (
+              <option value={status.id}>{status.name}</option>
+            ))}
           </select>
         </div>
         <div class="flex-1 min-w-[200px]">
@@ -154,38 +171,17 @@ if (taskCategory) {
         ) : (
           <div class="divide-y divide-gray-200">
             {tasks.map((task: any) => {
-              const statusColors = {
-                todo: 'bg-gray-100 text-gray-700',
-                in_progress: 'bg-blue-100 text-blue-700',
-                done: 'bg-green-100 text-green-700',
-                blocked: 'bg-red-100 text-red-700'
-              };
-              
-              const statusIcons = {
-                todo: '📝',
-                in_progress: '🔄',
-                done: '✅',
-                blocked: '🚫'
-              };
-              
-              const statusLabels = {
-                todo: 'Por Hacer',
-                in_progress: 'En Progreso',
-                done: 'Completado',
-                blocked: 'Bloqueado'
-              };
-              
-              const status = task.data.status || 'todo';
               
               return (
                 <div 
-                  class={`task-row py-4 px-6 hover:bg-gray-50 transition status-${status} ${
+                  class={`task-row py-4 px-6 hover:bg-gray-50 transition bg-[${task.statusData.color}] ${
                     task.level === 0 ? 'bg-white' : 'bg-gray-50'
-                  } ${status === 'done' ? 'opacity-60' : ''}`}
+                  } ${task.statusData.name === 'Completado' ? 'opacity-60' : ''}`}
                   style={`padding-left: ${1.5 + task.level * 2}rem;`}
+                  data-priority={task.data.priority}
                   data-task-id={task.id}
                   data-category-id={task.data.related_category_id || ''}
-                  data-status={status}
+                  data-status={task.statusData.id}
                   data-title={task.data.title.toLowerCase()}
                 >
                   <div class="flex items-start gap-4">
@@ -201,7 +197,7 @@ if (taskCategory) {
                             <a 
                               href={`/tasks/${task.id}`}
                               class={`font-semibold hover:text-indigo-600 transition ${
-                                status === 'done' ? 'line-through text-gray-500' : 
+                                task.statusData.name === 'Completado' ? 'line-through text-gray-500' : 
                                 task.level === 0 ? 'text-gray-900 text-lg' : 'text-gray-700'
                               }`}
                             >
@@ -218,8 +214,8 @@ if (taskCategory) {
                           {/* Metadata */}
                           <div class="flex items-center gap-3 mt-3 text-xs text-gray-500">
                             {/* Estado */}
-                            <span class={`px-2 py-1 rounded font-medium ${statusColors[status as keyof typeof statusColors]}`}>
-                              {statusIcons[status as keyof typeof statusIcons]} {statusLabels[status as keyof typeof statusLabels]}
+                            <span class={`px-2 py-1 rounded font-medium ${task.statusData.color}`}>
+                              {task.statusData.icon} {task.statusData.name}
                             </span>
                             
                             {/* Prioridad */}

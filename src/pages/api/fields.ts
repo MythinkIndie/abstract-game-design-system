@@ -1,5 +1,5 @@
 import type { APIRoute } from 'astro';
-import db from '@/lib/db';
+import {db} from '@/lib/db';
 import { nanoid } from 'nanoid';
 
 // GET - Obtener campos de una categoría
@@ -16,7 +16,7 @@ export const GET: APIRoute = async ({ url }) => {
       });
     }
     
-    const fields = db.prepare('SELECT * FROM fields WHERE category_id = ? ORDER BY field_order, created_at').all(categoryId);
+    const fields = db!.prepare('SELECT * FROM fields WHERE category_id = ? ORDER BY field_order, created_at').all(categoryId);
     
     return new Response(JSON.stringify(fields), {
       status: 200,
@@ -73,7 +73,7 @@ export const POST: APIRoute = async ({ request }) => {
         });
       }
 
-      const relatedCategory = db
+      const relatedCategory = db!
         .prepare('SELECT id FROM categories WHERE id = ?')
         .get(configObj.related_category_id);
 
@@ -91,8 +91,11 @@ export const POST: APIRoute = async ({ request }) => {
     
     // Asegurar que config sea un string JSON válido
     let configStr: string;
+
     if (config === null) {
       configStr = JSON.stringify({});
+    } else if (typeof config === 'object') {
+      configStr = JSON.stringify(config || {});
     } else if (typeof config === 'string') {
       try {
         JSON.parse(config);
@@ -100,13 +103,11 @@ export const POST: APIRoute = async ({ request }) => {
       } catch {
         configStr = JSON.stringify({});
       }
-    } else if (typeof config === 'object' && config !== null) {
-      configStr = JSON.stringify(config);
     } else {
       configStr = JSON.stringify({});
     }
     
-    const stmt = db.prepare(`
+    const stmt = db!.prepare(`
       INSERT INTO fields (id, category_id, name, label, type, required, unique_value, config, field_order, help_text)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
@@ -124,7 +125,7 @@ export const POST: APIRoute = async ({ request }) => {
       help_text || ''
     );
     
-    const newField = db.prepare('SELECT * FROM fields WHERE id = ?').get(id);
+    const newField = db!.prepare('SELECT * FROM fields WHERE id = ?').get(id);
     
     return new Response(JSON.stringify(newField), {
       status: 201,
@@ -192,9 +193,9 @@ export const PUT: APIRoute = async ({ request }) => {
     
     values.push(id);
     
-    db.prepare(`UPDATE fields SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+    db!.prepare(`UPDATE fields SET ${updates.join(', ')} WHERE id = ?`).run(...values);
     
-    const updatedField = db.prepare('SELECT * FROM fields WHERE id = ?').get(id);
+    const updatedField = db!.prepare('SELECT * FROM fields WHERE id = ?').get(id);
     
     return new Response(JSON.stringify(updatedField), {
       status: 200,
@@ -222,7 +223,7 @@ export const DELETE: APIRoute = async ({ request }) => {
       });
     }
     
-    db.prepare('DELETE FROM fields WHERE id = ?').run(id);
+    db!.prepare('DELETE FROM fields WHERE id = ?').run(id);
     
     return new Response(JSON.stringify({ success: true }), {
       status: 200,

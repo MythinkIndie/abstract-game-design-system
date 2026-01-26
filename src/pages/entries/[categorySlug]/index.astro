@@ -1,25 +1,25 @@
 ---
 // src/pages/entries/[categorySlug]/index.astro
-import { db } from '../../../lib/db';
+import { db } from '@/lib/db';
 
 const { categorySlug } = Astro.params;
 
-const category = db.prepare('SELECT * FROM categories WHERE slug = ?').get(categorySlug);
+const category = db!.prepare('SELECT * FROM categories WHERE slug = ?').get(categorySlug);
 
 if (!category) {
   return Astro.redirect('/categories');
 }
 
-const entries = db.prepare(`
+const entries = db!.prepare(`
   SELECT * FROM entries 
   WHERE category_id = ? 
   ORDER BY updated_at DESC
 `).all((category as any).id);
 
-const fields = db.prepare('SELECT * FROM fields WHERE category_id = ? ORDER BY field_order').all((category as any).id);
+const fields = db!.prepare('SELECT * FROM fields WHERE category_id = ? ORDER BY field_order').all((category as any).id);
 
 // Obtener estado de tareas para cada entrada
-const taskCategory = db.prepare('SELECT id FROM categories WHERE slug = ?').get('task') as any;
+const taskCategory = db!.prepare('SELECT id FROM categories WHERE slug = ?').get('task') as any;
 const entriesWithTaskStatus = (entries as any[]).map(entry => {
   let hasPendingTasks = false;
   let totalTasks = 0;
@@ -27,7 +27,7 @@ const entriesWithTaskStatus = (entries as any[]).map(entry => {
   
   if (taskCategory) {
     // Buscar tareas que apliquen a esta entrada
-    const allTasks = db.prepare(`
+    const allTasks = db!.prepare(`
       SELECT id, data FROM entries 
       WHERE category_id = ? 
         AND json_extract(data, '$.related_category_id') = ?
@@ -41,7 +41,7 @@ const entriesWithTaskStatus = (entries as any[]).map(entry => {
     totalTasks = applicableTasks.length;
     
     // Contar completadas
-    const completed = db.prepare(`
+    const completed = db!.prepare(`
       SELECT COUNT(*) as count FROM task_completion
       WHERE entry_id = ? AND is_completed = 1
     `).get(entry.id) as any;

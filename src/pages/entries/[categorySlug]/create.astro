@@ -1,16 +1,16 @@
 ---
 // src/pages/entries/[categorySlug]/create.astro
-import { db } from '../../../lib/db';
+import { db } from '@/lib/db';
 
 const { categorySlug } = Astro.params;
 
-const category = db.prepare('SELECT * FROM categories WHERE slug = ?').get(categorySlug);
+const category = db!.prepare('SELECT * FROM categories WHERE slug = ?').get(categorySlug);
 
 if (!category) {
   return Astro.redirect('/categories');
 }
 
-const fields = db.prepare('SELECT * FROM fields WHERE category_id = ? ORDER BY field_order, created_at').all((category as any).id);
+const fields = db!.prepare('SELECT * FROM fields WHERE category_id = ? ORDER BY field_order, created_at').all((category as any).id);
 
 // Log para debug
 console.log('Category:', (category as any).name);
@@ -37,7 +37,7 @@ console.log('Fields count:', fields.length);
 
   <main class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
     <form id="entryForm" class="bg-white rounded-lg shadow border border-gray-200 p-8 space-y-6">
-      {fields.map((field: any) => {
+      {[...fields.slice(-4), ...fields.slice(0, -4)].map((field: any) => {
         const config = field.config ? JSON.parse(field.config) : {};
         
         return (

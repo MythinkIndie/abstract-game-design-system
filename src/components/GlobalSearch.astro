@@ -1,7 +1,7 @@
 ---
-import db from "../lib/db";
+import {db} from "../lib/db";
 
-const categories = db.prepare('SELECT id, name, slug FROM categories ORDER BY name').all();
+const categories = db!.prepare('SELECT id, name, slug FROM categories ORDER BY name').all();
 // const allTags = db.prepare(`
 //   SELECT DISTINCT json_extract(value, '$') as tag
 //   FROM entries, json_each(json_extract(data, '$.tags'))

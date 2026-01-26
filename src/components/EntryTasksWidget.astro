@@ -1,5 +1,5 @@
 ---
-import db from '../lib/db';
+import { db } from '@/lib/db';
 
 interface Props {
   entryId: string;
@@ -8,12 +8,12 @@ interface Props {
 
 const { entryId, categoryId } = Astro.props;
 
-const taskCategory = db.prepare('SELECT id FROM categories WHERE slug = ?').get('task') as any;
+const taskCategory = db!.prepare('SELECT id FROM categories WHERE slug = ?').get('task') as any;
 let applicableTasks: any[] = [];
 let completionStats = { total: 0, completed: 0, percentage: 0 };
 
 if (taskCategory) {
-  const allTasks = db.prepare(`
+  const allTasks = db!.prepare(`
     SELECT * FROM entries 
     WHERE category_id = ? 
       AND json_extract(data, '$.related_category_id') = ?
@@ -28,7 +28,7 @@ if (taskCategory) {
     
     if (!applies) return null;
     
-    const completion = db.prepare(`
+    const completion = db!.prepare(`
       SELECT * FROM task_completion 
       WHERE task_id = ? AND entry_id = ?
     `).get(task.id, entryId) as any;
