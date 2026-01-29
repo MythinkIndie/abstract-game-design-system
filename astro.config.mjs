@@ -1,7 +1,7 @@
 // @ts-check
 import { defineConfig } from 'astro/config';
 import tailwind from '@astrojs/tailwind';
-import node from '@astrojs/node';
+import vercel from '@astrojs/vercel/serverless';
 
 // https://astro.build/config
 export default defineConfig({
@@ -12,9 +12,7 @@ export default defineConfig({
     }
   },
   site: "https://abstract-game-design-system.vercel.app/",
-  adapter: node({
-    mode: 'standalone' // genera un servidor Node.js independiente
-  }),
+  adapter: vercel(),
   output: 'server',
   server: {
     port: 4321,
