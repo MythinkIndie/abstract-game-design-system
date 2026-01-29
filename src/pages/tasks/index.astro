@@ -1,7 +1,6 @@
 ---
 // src/pages/tasks/index.astro
 import { db } from '@/lib/db';
-import { undefined } from 'astro:schema';
 
 const taskCategory = db!.prepare('SELECT * FROM categories WHERE slug = ?').get('task') as any;
 
@@ -52,6 +51,8 @@ if (taskCategory && statuses) {
     ];
   });
 }
+
+console.log(tasks[0])
 ---
 
 <!DOCTYPE html>

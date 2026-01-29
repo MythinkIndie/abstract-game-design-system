@@ -106,7 +106,8 @@ export const POST: APIRoute = async ({ request }) => {
       priority = 'medium',
       due_date = null,
       tags = [],
-      order_index = 0
+      order_index = 0,
+      assigned_to = ''
     } = body;
     
     if (!title) {
@@ -115,6 +116,8 @@ export const POST: APIRoute = async ({ request }) => {
         headers: { 'Content-Type': 'application/json' }
       });
     }
+
+    const initialStatus = db!.prepare('SELECT * FROM task_statuses WHERE name = ?').get('Sin empezar') as any;
     
     const taskCategory = db!.prepare('SELECT id FROM categories WHERE slug = ?').get('task') as { id: string } | undefined;
     
@@ -138,8 +141,10 @@ export const POST: APIRoute = async ({ request }) => {
       specific_entry_ids: Array.isArray(specific_entry_ids) ? specific_entry_ids : [],
       priority,
       due_date,
+      statusData: initialStatus,
       tags: Array.isArray(tags) ? tags : [],
-      order_index
+      order_index,
+      assigned_to
     };
     
     db!.prepare(`

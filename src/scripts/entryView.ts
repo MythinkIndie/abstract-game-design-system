@@ -186,7 +186,7 @@ document.getElementById('saveBtn')?.addEventListener('click', async () => {
   document.querySelectorAll('.editable-field').forEach(field => {
     const fieldName = (field as HTMLElement).dataset.field;
     const fieldType = (field as HTMLElement).dataset.type;
-    
+
     if (!fieldName) return;
     
     if (fieldType === 'boolean') {
@@ -216,14 +216,14 @@ document.getElementById('saveBtn')?.addEventListener('click', async () => {
     const response = await fetch('/api/entries', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: entryId, data: updatedData })
+      body: JSON.stringify({ id: entryId, title: currentData.title, data: updatedData })
     });
     
     if (response.ok) {
       hasChanges = false;
       document.getElementById('saveBtn')?.classList.add('hidden');
       showToast('✅ Cambios guardados');
-      saveChangesQuietly();
+      //saveChangesQuietly();
     } else {
       alert('Error al guardar');
     }

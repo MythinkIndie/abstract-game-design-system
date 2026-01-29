@@ -153,6 +153,28 @@ export function initializeDatabase() {
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      username TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      is_active INTEGER DEFAULT 1,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE roles (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT UNIQUE NOT NULL
+    );
+
+    CREATE TABLE user_roles (
+      user_id INTEGER,
+      role_id INTEGER,
+      PRIMARY KEY (user_id, role_id),
+      FOREIGN KEY (user_id) REFERENCES users(id),
+      FOREIGN KEY (role_id) REFERENCES roles(id)
+    );
+
     COMMIT;
   `);
 
@@ -180,6 +202,10 @@ export function initializeDatabase() {
     CREATE INDEX IF NOT EXISTS idx_sessions_username ON sessions(username);
     CREATE INDEX IF NOT EXISTS idx_activity_logs_username ON activity_logs(username);
     CREATE INDEX IF NOT EXISTS idx_activity_logs_created ON activity_logs(created_at);
+    CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+    CREATE INDEX IF NOT EXISTS idx_users_id ON users(id);
+    CREATE INDEX IF NOT EXISTS idx_roles_id ON roles(id);
+    CREATE INDEX IF NOT EXISTS idx_roles_name ON roles(name);
   `);
   console.log('✅ Base de datos inicializada');
 
@@ -393,26 +419,18 @@ export function seedDatabase() {
   );
 
   // ========================================
-  // Autentificación
+  // BASIC FOR USERS
   // ========================================
 
-  const privateMode = db!.prepare('SELECT * FROM app_settings WHERE key = ?').get('private_mode');
-  
-  if (!privateMode) {
-    console.log('  ℹ️  Configurando modo privado por defecto...');
-    db!.prepare('INSERT INTO app_settings (key, value) VALUES (?, ?)').run('private_mode', 'false');
-    console.log('  ✓ Modo privado desactivado por defecto');
-  }
-  
-  // Verificar si ya existe contraseña
-  const appPassword = db!.prepare('SELECT * FROM app_settings WHERE key = ?').get('app_password');
-  
-  if (!appPassword) {
-    console.log('  ℹ️  No hay contraseña configurada');
-    console.log('  📌 Para activar el modo privado:');
-    console.log('     1. Ve a /api/auth/setup');
-    console.log('     2. Configura una contraseña segura');
-  }
+  const insertrole = db!.prepare(`
+    INSERT INTO roles (name)
+    VALUES (?)
+  `);
+
+  // Meta fields
+  insertrole.run('admin');
+  insertrole.run('user');
+  insertrole.run('moderator');
   
   return {
     success: true,

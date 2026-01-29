@@ -18,16 +18,24 @@
       <p class="text-gray-600 text-sm">Configura la seguridad de tu aplicación</p>
     </div>
 
-    <div id="statusInfo" class="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-      <p class="text-sm text-blue-900">
-        <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-        Cargando estado actual...
-      </p>
-    </div>
-
     <form id="setupForm" class="space-y-6">
+      <div>
+        <label for="adminName" class="block text-sm font-medium text-gray-700 mb-2">
+          Nombre del administrador *
+        </label>
+        <input 
+          type="text" 
+          id="adminName" 
+          name="adminName"
+          required
+          minlength="8"
+          class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition"
+          placeholder="Por favor, no pongas 'admin'"
+        />
+        <p class="text-xs text-gray-500 mt-1">
+          Esta sera la cuenta del admin para poder gestionar la aplicación
+        </p>
+      </div>
       <div>
         <label for="password" class="block text-sm font-medium text-gray-700 mb-2">
           Contraseña de Acceso *
@@ -42,7 +50,7 @@
           placeholder="Mínimo 8 caracteres"
         />
         <p class="text-xs text-gray-500 mt-1">
-          Esta será la contraseña que todos los usuarios usarán para acceder
+          Esta será la contraseña de esta cuenta de administrador
         </p>
       </div>
 
@@ -72,7 +80,7 @@
             🔒 Activar Modo Privado
           </label>
           <p class="text-xs text-gray-600 mt-1">
-            Requerirá autenticación para acceder a la aplicación. Si no se activa, la contraseña se guardará pero no se usará.
+            Requerirá autenticación para acceder a la aplicación. Si no se activa, cualquier persona puede ver el proyecto pero no editarlo sin un usuario.
           </p>
         </div>
       </div>
@@ -94,12 +102,6 @@
         >
           Guardar Configuración
         </button>
-        <a 
-          href="/"
-          class="px-6 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition font-medium"
-        >
-          Cancelar
-        </a>
       </div>
     </form>
 
@@ -115,51 +117,11 @@
     const errorMessage = document.getElementById('errorMessage')!;
     const errorText = document.getElementById('errorText')!;
     const setupBtn = document.getElementById('setupBtn')!;
-    const statusInfo = document.getElementById('statusInfo')!;
-
-    // Cargar estado actual
-    async function loadStatus() {
-      try {
-        const response = await fetch('/api/auth/setup');
-        const data = await response.json();
-        
-        if (data.configured) {
-          statusInfo.className = 'mb-6 p-4 bg-green-50 border border-green-200 rounded-lg';
-          statusInfo.innerHTML = `
-            <p class="text-sm text-green-900">
-              <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              Ya existe una configuración. Puedes actualizarla aquí.
-              ${data.private_mode ? '<strong class="ml-2">• Modo privado ACTIVADO</strong>' : '<strong class="ml-2">• Modo privado DESACTIVADO</strong>'}
-            </p>
-          `;
-          
-          (document.getElementById('enablePrivateMode') as HTMLInputElement).checked = data.private_mode;
-        } else {
-          statusInfo.className = 'mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg';
-          statusInfo.innerHTML = `
-            <p class="text-sm text-yellow-900">
-              <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-              </svg>
-              No hay configuración de seguridad. Configura una contraseña ahora.
-            </p>
-          `;
-        }
-      } catch (error) {
-        statusInfo.className = 'mb-6 p-4 bg-red-50 border border-red-200 rounded-lg';
-        statusInfo.innerHTML = `
-          <p class="text-sm text-red-900">Error al cargar el estado</p>
-        `;
-      }
-    }
-
-    loadStatus();
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       
+      const adminuser = (document.getElementById('adminName') as HTMLInputElement).value;
       const password = (document.getElementById('password') as HTMLInputElement).value;
       const confirmPassword = (document.getElementById('confirmPassword') as HTMLInputElement).value;
       const enablePrivateMode = (document.getElementById('enablePrivateMode') as HTMLInputElement).checked;
@@ -181,12 +143,15 @@
         const response = await fetch('/api/auth/setup', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
+          body: JSON.stringify({
+            adminuser,
             password, 
             enable_private_mode: enablePrivateMode 
           })
         });
-        
+
+        console.log(response);
+
         const data = await response.json();
         
         if (response.ok) {

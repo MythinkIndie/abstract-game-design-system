@@ -540,7 +540,6 @@ console.log(tasks);
 
     function hideSubtasksRecursive(parentId: string) {
       const subtasks = document.querySelectorAll(`[data-parent-id="${parentId}"]`);
-      console.log(subtasks)
       subtasks.forEach(sub => {
 
         (sub as HTMLElement).style.display = 'none';

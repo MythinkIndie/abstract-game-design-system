@@ -17,23 +17,24 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     }
     
     // Obtener contraseña guardada
-    const appPassword = db.prepare('SELECT value FROM app_settings WHERE key = ?').get('app_password') as any;
+    const appUserRow = db!.prepare('SELECT username, password_hash FROM users WHERE username = ?').get(username) as any;
     
-    if (!appPassword) {
+    if (!appUserRow) {
       return new Response(JSON.stringify({ 
-        error: 'No hay contraseña configurada' 
+        error: 'Nombre de usuario o contraseña incorrectos 1' 
       }), {
         status: 500,
         headers: { 'Content-Type': 'application/json' }
       });
     }
+    console.log(appUserRow)
     
     // Verificar contraseña (hash SHA-256)
     const hashedPassword = crypto.createHash('sha256').update(password).digest('hex');
     
-    if (hashedPassword !== appPassword.value) {
+    if (hashedPassword !== appUserRow.password_hash) {
       return new Response(JSON.stringify({ 
-        error: 'Contraseña incorrecta' 
+        error: 'Nombre de usuario o contraseña incorrectos 2' 
       }), {
         status: 401,
         headers: { 'Content-Type': 'application/json' }
@@ -45,13 +46,13 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const sessionId = nanoid();
     const now = new Date().toISOString();
     
-    db.prepare(`
+    db!.prepare(`
       INSERT INTO sessions (id, token, username, created_at, last_activity)
       VALUES (?, ?, ?, ?, ?)
     `).run(sessionId, token, username, now, now);
     
     // Registrar actividad
-    db.prepare(`
+    db!.prepare(`
       INSERT INTO activity_logs (id, username, action, details, created_at)
       VALUES (?, ?, ?, ?, ?)
     `).run(nanoid(), username, 'login', 'Usuario inició sesión', now);
@@ -94,11 +95,11 @@ export const GET: APIRoute = async ({ cookies }) => {
   
   if (token) {
     // Eliminar sesión
-    db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
+    db!.prepare('DELETE FROM sessions WHERE token = ?').run(token);
     
     // Registrar actividad
     if (username) {
-      db.prepare(`
+      db!.prepare(`
         INSERT INTO activity_logs (id, username, action, details, created_at)
         VALUES (?, ?, ?, ?, ?)
       `).run(nanoid(), username, 'logout', 'Usuario cerró sesión', new Date().toISOString());

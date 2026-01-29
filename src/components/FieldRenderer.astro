@@ -8,6 +8,8 @@ const config = field.config ? JSON.parse(field.config) : {};
   <input
     type="text"
     class="editable-field w-full px-3 py-2 border border-gray-300 rounded-lg"
+    data-field={field.name}
+    data-type="TEXTAREA"
     value={value || ''}
     placeholder={isEmpty ? '⚠️ Campo vacío - Click para editar' : ''}
   />
@@ -57,7 +59,7 @@ const config = field.config ? JSON.parse(field.config) : {};
   <textarea 
     class="editable-field w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-sm leading-normal resize-y"
     data-field={field.name}
-    data-type="markdown"
+    data-type="TEXTAREA"
     rows="6"
     placeholder={isEmpty ? '⚠️ Campo vacío - Click para editar' : 'Soporta Markdown'}
   >{value || ''}</textarea>

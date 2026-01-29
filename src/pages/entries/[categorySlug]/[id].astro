@@ -9,13 +9,13 @@ import EntryAssignment from './components/EntryAssignment.astro';
 
 const { categorySlug, id } = Astro.params;
 
-const category = db.prepare('SELECT * FROM categories WHERE slug = ?').get(categorySlug);
+const category = db!.prepare('SELECT * FROM categories WHERE slug = ?').get(categorySlug);
 if (!category) return Astro.redirect('/categories');
 
-const entry = db.prepare('SELECT * FROM entries WHERE id = ?').get(id);
+const entry = db!.prepare('SELECT * FROM entries WHERE id = ?').get(id);
 if (!entry) return Astro.redirect(`/entries/${categorySlug}`);
 
-const fields = db.prepare('SELECT * FROM fields WHERE category_id = ? ORDER BY field_order').all((category as any).id);
+const fields = db!.prepare('SELECT * FROM fields WHERE category_id = ? ORDER BY field_order').all((category as any).id);
 
 let entryData: any = {};
 try {
@@ -23,7 +23,7 @@ try {
 } catch {}
 
 // Calcular progreso
-const completionStates = db.prepare(`
+const completionStates = db!.prepare(`
   SELECT field_id, is_complete FROM field_completion WHERE entry_id = ?
 `).all(id);
 
@@ -56,9 +56,9 @@ for (const field of fieldsWithCompletion) {
     
     for (const relId of relatedIds) {
       if (relId && !relatedEntries.has(relId)) {
-        const relEntry = db.prepare('SELECT id, title, category_id FROM entries WHERE id = ?').get(relId) as any;
+        const relEntry = db!.prepare('SELECT id, title, category_id FROM entries WHERE id = ?').get(relId) as any;
         if (relEntry) {
-          const relCategory = db.prepare('SELECT slug FROM categories WHERE id = ?').get(relEntry.category_id) as any;
+          const relCategory = db!.prepare('SELECT slug FROM categories WHERE id = ?').get(relEntry.category_id) as any;
           relatedEntries.set(relId, {
             title: relEntry.title,
             categorySlug: relCategory?.slug

@@ -6,8 +6,10 @@ import { initializeDatabase, seedDatabase } from '@/lib/seed';
 
 // Crear instancia de base de datos
 export let db: Database.Database | null = null;
+let initPromise: Promise<void> | null = null;
 
 export async function initDb() {
+
   if (db) return db; // ya inicializada
 
   const dataDir = path.join(process.cwd(), 'data');
@@ -16,28 +18,52 @@ export async function initDb() {
     fs.mkdirSync(dataDir, { recursive: true });
   }
 
-  // Ruta a la base de datos (en /data en la raíz del proyecto)
-  const dbPath = path.resolve(process.cwd(), 'data/game-design.db');
+  if (!initPromise) {
+    initPromise = (async () => {
+      const dbPath = path.resolve(process.cwd(), 'data/game-design.db');
+      db = new Database(dbPath);
+      db.pragma('foreign_keys = ON');
+    })();
+  }
 
-  db = new Database(dbPath);
+  await initPromise;
 
-  db.pragma('foreign_keys = ON');
+  return db;
+}
 
-  // Inicializar tablas
-  const init = await initializeDatabase();
-  if (!init.success) throw new Error('DB initialization failed');
+export async function addTables() {
+  if (!db) throw new Error('DB not initialized');
 
-  // Sembrar datos
-  const seed = await seedDatabase();
-  if (!seed.success) throw new Error('DB seeding failed');
+  try {
+    const init = await initializeDatabase();
+    if (!init.success) throw new Error('DB initialization failed');
 
-  console.log('✅ Base de datos lista');
+    // Sembrar datos
+    const seed = await seedDatabase();
+    if (!seed.success) throw new Error('DB seeding failed');
+  } catch (error) {
+    console.error('Error adding tables:', error);
+  }
+
   return db;
 }
 
 // Función para cerrar la base de datos
 export function closeDatabase() {
   db?.close();
+}
+
+export function databaseHasTables(db: Database.Database): boolean {
+  const row = db
+    .prepare(`
+      SELECT name 
+      FROM sqlite_master 
+      WHERE type='table' AND name NOT LIKE 'sqlite_%'
+      LIMIT 1
+    `)
+    .get();
+
+  return !!row;
 }
 
 // Exportar la instancia de la base de datos

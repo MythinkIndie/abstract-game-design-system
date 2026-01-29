@@ -1,12 +1,22 @@
 import type { MiddlewareHandler } from 'astro';
-import { db, initDb } from '@/lib/db';
+import { db, initDb, databaseHasTables } from '@/lib/db';
 
 export const onRequest: MiddlewareHandler = async (context, next) => {
 
-  await initDb();
-
   const { url, cookies, redirect } = context;
-  
+  const setupPaths = ['/setup', '/api/auth/setup'];
+
+  await initDb();
+  const isDbInitialized = databaseHasTables(db!);
+
+  if (!isDbInitialized) {
+
+    if (!setupPaths.some(path => url.pathname.startsWith(path))) {return redirect('/setup');} else { return next(); }
+
+  }
+
+  if (setupPaths.some(path => url.pathname.startsWith(path))) return redirect('/');
+
   // Verificar si la aplicación está en modo privado
   const appSettings = db!.prepare('SELECT * FROM app_settings WHERE key = ?').get('private_mode') as any;
   
@@ -27,6 +37,15 @@ export const onRequest: MiddlewareHandler = async (context, next) => {
   
   if (!authToken || !username) {
     return redirect('/login');
+  }
+
+  const allUsers = db!.prepare('SELECT * FROM users').all();
+  const relationUserRoles = db!.prepare('SELECT * FROM user_roles').all();
+
+  if (url.pathname.startsWith('/admin') && relationUserRoles.find((ur: any) => ur.user_id == allUsers.find((u: any) => u.username == username)?.id)?.role_id !== 1) {
+
+    return redirect('/');
+
   }
   
   // Verificar que el token sea válido
@@ -52,7 +71,8 @@ export const onRequest: MiddlewareHandler = async (context, next) => {
   
   // Actualizar última actividad
   db!.prepare('UPDATE sessions SET last_activity = ? WHERE token = ?').run(new Date().toISOString(), authToken);
-  
+
   // Continuar con la solicitud
   return next();
+  
 };

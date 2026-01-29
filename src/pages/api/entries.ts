@@ -1,6 +1,6 @@
 // src/pages/api/entries.ts
 import type { APIRoute } from 'astro';
-import { db } from '../../lib/db';
+import { db } from '@/lib/db';
 import { nanoid } from 'nanoid';
 
 // GET - Obtener entradas de una categoría
