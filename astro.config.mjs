@@ -11,10 +11,10 @@ export default defineConfig({
       exclude: ['better-sqlite3']
     }
   },
+  site: "https://abstract-game-design-system.vercel.app/",
   adapter: node({
     mode: 'standalone' // genera un servidor Node.js independiente
   }),
-  // integrations: [tailwind()],
   output: 'server',
   server: {
     port: 4321,
