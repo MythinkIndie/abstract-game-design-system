@@ -1,17 +1,20 @@
 ---
 // src/pages/categories/index.astro
-import { db } from '@/lib/db';
+import { getSupabaseClient } from "@/lib/supabaseClient";
 
-const categories = db!.prepare('SELECT * FROM categories ORDER BY is_system DESC, created_at').all();
+const supabase = getSupabaseClient();
+
+const categories = await supabase
+  .from('categories')
+  .select('*')
+  .order('is_system', { ascending: false })
+  .order('created_at', { ascending: false });
+
 
 // Contar entradas por categoría
-const entryCounts = db!.prepare(`
-  SELECT category_id, COUNT(*) as count 
-  FROM entries 
-  GROUP BY category_id
-`).all() as any[];
+const entryCounts = await supabase.from('entries').select('category_id', { count: 'exact' });
 
-const countMap = new Map(entryCounts.map((item: any) => [item.category_id, item.count]));
+const countMap = new Map(entryCounts.data?.map((item: any) => [item.category_id, item.count]));
 ---
 
 <!DOCTYPE html>
@@ -41,7 +44,7 @@ const countMap = new Map(entryCounts.map((item: any) => [item.category_id, item.
     <div class="mb-8">
       <h2 class="text-lg font-semibold text-gray-900 mb-4">Categorías del Sistema</h2>
       <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {categories.filter((cat: any) => cat.is_system === 1).map((cat: any) => (
+        {categories.data && categories.data.filter((cat: any) => cat.is_system === 1).map((cat: any) => (
           <a 
             href={`/categories/${cat.slug}`}
             class="block bg-white rounded-lg shadow border-2 border-gray-200 hover:border-indigo-300 transition p-6"
@@ -68,7 +71,7 @@ const countMap = new Map(entryCounts.map((item: any) => [item.category_id, item.
     <div>
       <h2 class="text-lg font-semibold text-gray-900 mb-4">Categorías Personalizadas</h2>
       
-      {categories.filter((cat: any) => cat.is_system === 0).length === 0 ? (
+      {categories.data && categories.data.filter((cat: any) => cat.is_system === 0).length === 0 ? (
         <div class="bg-white rounded-lg shadow border border-gray-200 p-12 text-center">
           <div class="max-w-md mx-auto">
             <svg class="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -83,7 +86,7 @@ const countMap = new Map(entryCounts.map((item: any) => [item.category_id, item.
         </div>
       ) : (
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {categories.filter((cat: any) => cat.is_system === 0).map((cat: any) => (
+          {categories.data && categories.data.filter((cat: any) => cat.is_system === 0).map((cat: any) => (
             <div class="bg-white rounded-lg shadow border border-gray-200 hover:border-indigo-300 transition">
               <a href={`/categories/${cat.slug}`} class="block p-6">
                 <div class="flex items-start justify-between mb-3">

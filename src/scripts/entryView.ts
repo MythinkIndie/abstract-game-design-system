@@ -49,7 +49,7 @@ async function loadCurrentData() {
   try {
     const response = await fetch(`/api/entries?id=${entryId}`);
     const entry = await response.json();
-    currentData = JSON.parse(entry.data);
+    currentData = JSON.parse(entry.data.data);
 
     await loadRelationSelects();
 

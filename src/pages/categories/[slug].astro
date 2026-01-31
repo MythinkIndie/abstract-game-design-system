@@ -1,31 +1,49 @@
 ---
 // src/pages/categories/[slug].astro
-import { db } from '@/lib/db';
+import { getSupabaseClient } from "@/lib/supabaseClient";
 
 const { slug } = Astro.params;
 
-const category = db!.prepare('SELECT * FROM categories WHERE slug = ?').get(slug);
+const supabase = getSupabaseClient();
 
-if (!category) {
+const category = await supabase
+  .from('categories')
+  .select('*')
+  .eq('slug', slug);
+
+if (!category.data || category.data.length === 0) {
   return Astro.redirect('/categories');
 }
 
-const fields = db!.prepare('SELECT * FROM fields WHERE category_id = ? ORDER BY field_order, created_at').all((category as any).id);
+const fields = await supabase
+  .from('fields')
+  .select('*')
+  .eq('category_id', (category.data[0] as any).id)
+  .order('field_order', { ascending: true })
+  .order('created_at', { ascending: true });
 
-const inheritedFields = fields.filter((f: any) => {
-  // Si la categoría hereda de Entity, verificar si el campo existe en Entity
-  if ((category as any).inherits_from) {
-    const parentField = db!.prepare(
-      'SELECT id FROM fields WHERE category_id = ? AND name = ?'
-    ).get((category as any).inherits_from, f.name);
-    return !!parentField;
+const inheritedFields: any[] = [];
+
+for (const f of fields.data!) {
+  if ((category.data[0] as any).inherits_from) {
+    const { data } = await supabase
+      .from('fields')
+      .select('id')
+      .eq('category_id', (category.data[0] as any).inherits_from)
+      .eq('name', f.name);
+
+    if (data?.[0]?.id) {
+      inheritedFields.push(f);
+    }
   }
-  return false;
-});
+}
 
-const customFields = fields.filter((f: any) => !inheritedFields.includes(f));
+const customFields = fields.data.filter((f: any) => !inheritedFields.includes(f));
 
-const entryCount = db!.prepare('SELECT COUNT(*) as count FROM entries WHERE category_id = ?').get((category as any).id) as { count: number };
+const entryCount = await supabase
+  .from('entries')
+  .select('id', { count: 'exact' })
+  .eq('category_id', (category.data[0] as any).id);
 ---
 
 <!DOCTYPE html>
@@ -33,25 +51,25 @@ const entryCount = db!.prepare('SELECT COUNT(*) as count FROM entries WHERE cate
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{(category as any).name} - Configuración</title>
+  <title>{(category.data[0] as any).name} - Configuración</title>
 </head>
-<body class="bg-gray-50 min-h-screen" data-category-id={(category as any).id} data-slug={slug}>
+<body class="bg-gray-50 min-h-screen" data-category-id={(category.data[0] as any).id} data-slug={slug}>
   <header class="bg-white shadow-sm border-b border-gray-200">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
       <a href="/categories" class="text-sm text-gray-500 hover:text-gray-700">← Volver a categorías</a>
       <div class="flex items-center justify-between mt-2">
         <div class="flex items-center gap-4">
-          <div class="w-16 h-16 rounded-lg flex items-center justify-center text-white font-bold text-2xl" style={`background-color: ${(category as any).color}`}>
-            {(category as any).name.substring(0, 2).toUpperCase()}
+          <div class="w-16 h-16 rounded-lg flex items-center justify-center text-white font-bold text-2xl" style={`background-color: ${(category.data[0] as any).color}`}>
+            {category.data && (category.data[0] as any).name?.substring(0, 2).toUpperCase()}
           </div>
           <div>
-            <h1 class="text-2xl font-bold text-gray-900">{(category as any).name}</h1>
-            <p class="text-sm text-gray-500">{(category as any).description || 'Sin descripción'}</p>
+            <h1 class="text-2xl font-bold text-gray-900">{(category.data[0] as any).name}</h1>
+            <p class="text-sm text-gray-500">{(category.data[0] as any).description || 'Sin descripción'}</p>
           </div>
         </div>
         <div class="flex gap-3">
           <a href={`/entries/${slug}`} class="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition">
-            Ver Entradas ({entryCount.count})
+            Ver Entradas ({entryCount.data?.length})
           </a>
           <a href={`/entries/${slug}/create`} class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition">
             + Nueva Entrada
@@ -66,7 +84,7 @@ const entryCount = db!.prepare('SELECT COUNT(*) as count FROM entries WHERE cate
       <div class="bg-white rounded-lg shadow border border-gray-200">
         <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
           <h2 class="text-lg font-semibold text-gray-900">Campos de la Categoría</h2>
-          {!(category as any).is_system && (
+          {!(category.data[0] as any).is_system && (
             <button 
               id="addFieldBtn"
               class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition text-sm font-medium"
@@ -78,7 +96,7 @@ const entryCount = db!.prepare('SELECT COUNT(*) as count FROM entries WHERE cate
 
         <div class="p-6 space-y-8">
           {/* CAMPOS HEREDADOS */}
-          {inheritedFields.length > 0 && (
+          {inheritedFields && inheritedFields.length > 0 && (
             <div>
               <div class="flex items-center gap-2 mb-4">
                 <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -90,7 +108,7 @@ const entryCount = db!.prepare('SELECT COUNT(*) as count FROM entries WHERE cate
               </div>
               
               <div class="space-y-3 pl-6 border-l-2 border-gray-200">
-                {inheritedFields.map((field: any) => (
+                {inheritedFields && inheritedFields.map((field: any) => (
                   <div class="border border-gray-200 bg-gray-50 rounded-lg p-4">
                     <div class="flex items-start justify-between">
                       <div class="flex-1">
@@ -133,14 +151,14 @@ const entryCount = db!.prepare('SELECT COUNT(*) as count FROM entries WHERE cate
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
               </svg>
               <h3 class="text-sm font-semibold text-indigo-900 uppercase tracking-wide">
-                Campos Personalizados ({customFields.length})
+                Campos Personalizados ({customFields ? customFields.length : 0})
               </h3>
             </div>
 
-            {customFields.length === 0 ? (
+            {customFields && customFields.length === 0 ? (
               <div class="text-center py-8 border-2 border-dashed border-gray-300 rounded-lg">
                 <p class="text-gray-500 mb-3">No hay campos personalizados aún</p>
-                {!(category as any).is_system && (
+                {!(category.data[0] as any).is_system && (
                   <button 
                     onclick="document.getElementById('addFieldBtn')?.click()"
                     class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition text-sm"
@@ -151,7 +169,7 @@ const entryCount = db!.prepare('SELECT COUNT(*) as count FROM entries WHERE cate
               </div>
             ) : (
               <div class="space-y-3 pl-6 border-l-2 border-indigo-200">
-                {customFields.map((field: any) => (
+                {customFields && customFields.map((field: any) => (
                   <div class="border border-gray-200 rounded-lg p-4 hover:border-indigo-300 transition bg-white">
                     <div class="flex items-start justify-between">
                       <div class="flex-1">
@@ -186,7 +204,7 @@ const entryCount = db!.prepare('SELECT COUNT(*) as count FROM entries WHERE cate
                       </div>
                       
                       {/* BOTÓN ELIMINAR (solo campos personalizados) */}
-                      {!(category as any).is_system && (
+                      {!(category.data[0] as any).is_system && (
                         <button 
                           class="delete-field text-gray-400 hover:text-red-600 transition ml-4 group"
                           data-id={field.id}

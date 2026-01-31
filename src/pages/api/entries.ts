@@ -1,7 +1,8 @@
 // src/pages/api/entries.ts
 import type { APIRoute } from 'astro';
-import { db } from '@/lib/db';
-import { nanoid } from 'nanoid';
+import { getSupabaseClient } from '@/lib/supabaseClient';
+
+const supabase = getSupabaseClient();
 
 // GET - Obtener entradas de una categoría
 export const GET: APIRoute = async ({ url }) => {
@@ -10,9 +11,9 @@ export const GET: APIRoute = async ({ url }) => {
     const entryId = url.searchParams.get('id');
     
     if (entryId) {
-      const entry = db.prepare('SELECT * FROM entries WHERE id = ?').get(entryId);
+      const entry = await supabase.from('entries').select('*').eq('id', entryId).single();
       
-      if (!entry) {
+      if (!entry || !entry.data) {
         return new Response(JSON.stringify({ error: 'Entry not found' }), {
           status: 404,
           headers: { 'Content-Type': 'application/json' }
@@ -34,9 +35,9 @@ export const GET: APIRoute = async ({ url }) => {
       });
     }
     
-    const entries = db.prepare('SELECT * FROM entries WHERE category_id = ? ORDER BY created_at DESC').all(categoryId);
+    const entries = await supabase.from('entries').select('*').eq('category_id', categoryId).order('created_at', { ascending: false });
     
-    return new Response(JSON.stringify(entries), {
+    return new Response(JSON.stringify(entries.data), {
       status: 200,
       headers: { 'Content-Type': 'application/json' }
     });
@@ -64,27 +65,18 @@ export const POST: APIRoute = async ({ request }) => {
         headers: { 'Content-Type': 'application/json' }
       });
     }
+
+    await supabase.from('entries').insert({
+      category_id: category_id,
+      title: title,
+      data: typeof data === 'string' ? data : JSON.stringify(data),
+    });
+
+    const newEntryRecord = await supabase.from('entries').select('id').order('created_at', { ascending: false }).limit(1).single();
+
+    const newEntry = await supabase.from('entries').select('*').eq('id', newEntryRecord.data.id).single();
     
-    const id = nanoid();
-    const now = new Date().toISOString();
-    
-    const stmt = db.prepare(`
-      INSERT INTO entries (id, category_id, title, data, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `);
-    
-    stmt.run(
-      id,
-      category_id,
-      title,
-      typeof data === 'string' ? data : JSON.stringify(data),
-      now,
-      now
-    );
-    
-    const newEntry = db.prepare('SELECT * FROM entries WHERE id = ?').get(id);
-    
-    return new Response(JSON.stringify(newEntry), {
+    return new Response(JSON.stringify(newEntry.data), {
       status: 201,
       headers: { 'Content-Type': 'application/json' }
     });
@@ -110,37 +102,15 @@ export const PUT: APIRoute = async ({ request }) => {
         headers: { 'Content-Type': 'application/json' }
       });
     }
+
+    await supabase.from('entries').update({
+      ...(title !== undefined && { title }),
+      ...(data !== undefined && { data: typeof data === 'string' ? data : JSON.stringify(data) })
+    }).eq('id', id);
     
-    const now = new Date().toISOString();
-    const updates: string[] = [];
-    const values: any[] = [];
+    const updatedEntry = await supabase.from('entries').select('*').eq('id', id).single();
     
-    if (title !== undefined) {
-      updates.push('title = ?');
-      values.push(title);
-    }
-    if (data !== undefined) {
-      updates.push('data = ?');
-      values.push(typeof data === 'string' ? data : JSON.stringify(data));
-    }
-    
-    updates.push('updated_at = ?');
-    values.push(now);
-    
-    if (updates.length === 1) { // Solo updated_at
-      return new Response(JSON.stringify({ error: 'No fields to update' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      });
-    }
-    
-    values.push(id);
-    
-    db.prepare(`UPDATE entries SET ${updates.join(', ')} WHERE id = ?`).run(...values);
-    
-    const updatedEntry = db.prepare('SELECT * FROM entries WHERE id = ?').get(id);
-    
-    return new Response(JSON.stringify(updatedEntry), {
+    return new Response(JSON.stringify(updatedEntry.data), {
       status: 200,
       headers: { 'Content-Type': 'application/json' }
     });
@@ -166,7 +136,7 @@ export const DELETE: APIRoute = async ({ request }) => {
       });
     }
     
-    db.prepare('DELETE FROM entries WHERE id = ?').run(id);
+    await supabase.from('entries').delete().eq('id', id);
     
     return new Response(JSON.stringify({ success: true }), {
       status: 200,

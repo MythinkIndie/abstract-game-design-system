@@ -1,20 +1,18 @@
 ---
 // src/pages/entries/[categorySlug]/create.astro
-import { db } from '@/lib/db';
+import { getSupabaseClient } from '@/lib/supabaseClient';
 
 const { categorySlug } = Astro.params;
 
-const category = db!.prepare('SELECT * FROM categories WHERE slug = ?').get(categorySlug);
+const supabase = getSupabaseClient();
+const category = await supabase.from('categories').select('*').eq('slug', categorySlug).single();
 
-if (!category) {
+if (!category.data || category.data.length === 0) {
   return Astro.redirect('/categories');
 }
 
-const fields = db!.prepare('SELECT * FROM fields WHERE category_id = ? ORDER BY field_order, created_at').all((category as any).id);
+const fields = await supabase.from('fields').select('*').eq('category_id', (category.data as any).id).order('field_order', { ascending: true });
 
-// Log para debug
-console.log('Category:', (category as any).name);
-console.log('Fields count:', fields.length);
 ---
 
 <!DOCTYPE html>
@@ -22,22 +20,22 @@ console.log('Fields count:', fields.length);
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Nueva Entrada - {(category as any).name}</title>
+  <title>Nueva Entrada - {(category.data as any).name}</title>
 </head>
 <body class="bg-gray-50 min-h-screen" 
-  data-category-id={(category as any).id} 
+  data-category-id={(category.data as any).id} 
   data-category-slug={categorySlug}
-  data-fields={JSON.stringify(fields)}>
+  data-fields={JSON.stringify(fields.data || [])}>
   <header class="bg-white shadow-sm border-b border-gray-200">
     <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
       <a href={`/entries/${categorySlug}`} class="text-sm text-gray-500 hover:text-gray-700">← Volver a entradas</a>
-      <h1 class="text-2xl font-bold text-gray-900 mt-1">Nueva Entrada: {(category as any).name}</h1>
+      <h1 class="text-2xl font-bold text-gray-900 mt-1">Nueva Entrada: {(category.data as any).name}</h1>
     </div>
   </header>
 
   <main class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
     <form id="entryForm" class="bg-white rounded-lg shadow border border-gray-200 p-8 space-y-6">
-      {[...fields.slice(-4), ...fields.slice(0, -4)].map((field: any) => {
+      {fields.data && [...fields.data.slice(-4), ...fields.data.slice(0, -4)].map((field: any) => {
         const config = field.config ? JSON.parse(field.config) : {};
         
         return (

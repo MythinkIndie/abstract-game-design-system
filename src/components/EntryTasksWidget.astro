@@ -1,5 +1,5 @@
 ---
-import { db } from '@/lib/db';
+import { getSupabaseClient } from '@/lib/supabaseClient';
 
 interface Props {
   entryId: string;
@@ -8,35 +8,33 @@ interface Props {
 
 const { entryId, categoryId } = Astro.props;
 
-const taskCategory = db!.prepare('SELECT id FROM categories WHERE slug = ?').get('task') as any;
+const supabase = getSupabaseClient();
+
+const taskCategory = await supabase.from('categories').select('id').eq('slug', 'task').single();
 let applicableTasks: any[] = [];
 let completionStats = { total: 0, completed: 0, percentage: 0 };
 
 if (taskCategory) {
-  const allTasks = db!.prepare(`
-    SELECT * FROM entries 
-    WHERE category_id = ? 
-      AND json_extract(data, '$.related_category_id') = ?
-      AND (json_extract(data, '$.parent_task_id') IS NULL OR json_extract(data, '$.parent_task_id') = '')
-    ORDER BY json_extract(data, '$.order_index') ASC
-  `).all(taskCategory.id, categoryId) as any[];
+  const allTasks = await supabase.from('entries')
+    .select('*')
+    .eq('category_id', taskCategory.data.id)
+    .eq('data->>related_category_id', categoryId)
+    .eq('data->>parent_task_id', null)
+    .order('data->>order_index', { ascending: true });
   
-  applicableTasks = allTasks.map(task => {
+  applicableTasks = allTasks.data!.map(task => async () => {
     const data = JSON.parse(task.data);
     const applies = data.applies_to_all || 
                    (data.specific_entry_ids && data.specific_entry_ids.includes(entryId));
     
     if (!applies) return null;
     
-    const completion = db!.prepare(`
-      SELECT * FROM task_completion 
-      WHERE task_id = ? AND entry_id = ?
-    `).get(task.id, entryId) as any;
+    const completion = await supabase!.from('task_completion').select('*').eq('task_id', task.id).eq('entry_id', entryId).single();
     
     return {
       ...task,
       data,
-      is_completed: completion ? completion.is_completed === 1 : data.is_completed || false
+      is_completed: completion.data ? completion.data.is_completed === 1 : data.is_completed || false
     };
   }).filter(Boolean);
   
@@ -89,13 +87,13 @@ if (taskCategory) {
     </div>
   </div>
 
-  {applicableTasks.length === 0 ? (
+  {applicableTasks.data && applicableTasks.data.length === 0 ? (
     <p class="text-sm text-gray-500 text-center py-8">
       No hay tareas asignadas a esta entrada
     </p>
   ) : (
     <div class="space-y-2">
-      {applicableTasks.map((task: any) => (
+      {applicableTasks.data && applicableTasks.data.map((task: any) => (
         <div class={`flex items-start gap-3 p-3 border rounded-lg transition ${
           task.is_completed 
             ? 'border-green-200 bg-green-50' 

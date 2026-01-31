@@ -1,27 +1,26 @@
 ---
 // src/pages/tasks/index.astro
-import { db } from '@/lib/db';
+import { getSupabaseClient } from "@/lib/supabaseClient";
 
-const taskCategory = db!.prepare('SELECT * FROM categories WHERE slug = ?').get('task') as any;
+const supabase = getSupabaseClient();
+
+const taskCategory = await supabase.from('categories').select('*').eq('slug', 'task').single();
 
 // Obtener todas las categorías para el filtro
-const categories = db!.prepare('SELECT id, name, slug FROM categories WHERE is_system = 0 ORDER BY name').all();
+const categories = await supabase.from('categories').select('id, name, slug').eq('is_system', 0).order('name');
 
-const statuses = db!.prepare('SELECT * FROM task_statuses ORDER BY order_index').all();
+const statuses = await supabase.from('task_statuses').select('*').order('order_index');
 
 // Función para obtener subtareas recursivamente
-function getSubtasksRecursive(parentId: string, level: number = 1): any[] {
-  const subtasks = db!.prepare(`
-    SELECT * FROM entries 
-    WHERE category_id = ? AND json_extract(data, '$.parent_task_id') = ?
-    ORDER BY created_at ASC
-  `).all(taskCategory.id, parentId) as any[];
+async function getSubtasksRecursive(parentId: string, level: number = 1): Promise<any[]> {
+
+  const subtasks = await supabase.from('entries').select('*').eq('category_id', taskCategory.data.id).eq('data->>parent_task_id', parentId).order('created_at', { ascending: true });
   
-  return subtasks.flatMap(task => {
+  return subtasks.data?.flatMap(task => async () => {
     const data = JSON.parse(task.data);
     let statusData = statuses.find(status => (status as any).id === data.status);
     statusData = typeof statusData === 'undefined' ? statuses[0] : statusData;
-    const children = getSubtasksRecursive(task.id, level + 1);
+    const children = await getSubtasksRecursive(task.id, level + 1);
     return [
       { ...task, statusData, data, level },
       ...children
@@ -29,30 +28,25 @@ function getSubtasksRecursive(parentId: string, level: number = 1): any[] {
   });
 }
 
-let tasks: any[] = [];
+let tasks: any;
+
 if (taskCategory && statuses) {
   // Obtener solo tareas raíz (sin padre)
-  const rootTasks = db!.prepare(`
-    SELECT * FROM entries 
-    WHERE category_id = ? 
-      AND (json_extract(data, '$.parent_task_id') IS NULL OR json_extract(data, '$.parent_task_id') = '')
-    ORDER BY created_at ASC
-  `).all(taskCategory.id) as any[];
+  const rootTasks = await supabase.from('entries').select('*').eq('category_id', taskCategory.id).eq('data->>parent_task_id', '').order('created_at', { ascending: true });
 
   // Expandir con subtareas
-  tasks = rootTasks.flatMap(task => {
+  tasks = rootTasks.data?.flatMap(task => async () => {
     
     const data = JSON.parse(task.data);
     const statusData = statuses.find(status => (status as any).id === data.status);
 
     return [
       { ...task, statusData, data, level: 0 },
-      ...getSubtasksRecursive(task.id)
+      ...await getSubtasksRecursive(task.id)
     ];
   });
 }
 
-console.log(tasks[0])
 ---
 
 <!DOCTYPE html>
@@ -108,7 +102,7 @@ console.log(tasks[0])
           <label class="block text-xs font-medium text-gray-600 mb-1">Filtrar por categoría</label>
           <select id="categoryFilter" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
             <option value="">Todas las categorías</option>
-            {categories.map((cat: any) => (
+            {categories.data && categories.data.map((cat: any) => (
               <option value={cat.id}>{cat.name}</option>
             ))}
           </select>
@@ -127,7 +121,7 @@ console.log(tasks[0])
           <label class="block text-xs font-medium text-gray-600 mb-1">Filtrar por estado</label>
           <select id="statusFilter" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
             <option value="">Todos los estados</option>
-            {statuses.map((status: any) => (
+            {statuses.data && statuses.data.map((status: any) => (
               <option value={status.id}>{status.name}</option>
             ))}
           </select>
@@ -159,10 +153,10 @@ console.log(tasks[0])
       <div class="bg-white rounded-lg shadow border border-gray-200">
         <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
           <h2 class="text-lg font-semibold text-gray-900">Lista de Tareas</h2>
-          <span class="text-sm text-gray-500">{tasks.length} tareas</span>
+          <span class="text-sm text-gray-500">{tasks?.data && tasks.data.length} tareas</span>
         </div>
 
-        {tasks.length === 0 ? (
+        {tasks?.data && tasks.data.length === 0 ? (
           <div class="p-12 text-center">
             <p class="text-gray-500 mb-4">No hay tareas creadas</p>
             <a href="/tasks/create" class="inline-block px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition">
@@ -171,7 +165,7 @@ console.log(tasks[0])
           </div>
         ) : (
           <div class="divide-y divide-gray-200">
-            {tasks.map((task: any) => {
+            {tasks?.data && tasks.data.map((task: any) => {
               
               return (
                 <div 

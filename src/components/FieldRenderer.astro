@@ -1,7 +1,11 @@
 ---
-const { field, value, db, parentCategory } = Astro.props;
+const { field, value, parentCategory } = Astro.props;
 const isEmpty = value === undefined || value === null || value === '';
 const config = field.config ? JSON.parse(field.config) : {};
+
+import { getSupabaseClient } from '@/lib/supabaseClient';
+const supabase = getSupabaseClient();
+
 ---
 
 {field.type === 'text' && (
@@ -134,7 +138,7 @@ const config = field.config ? JSON.parse(field.config) : {};
     </textarea>
 )}
 
-{field.type === 'relation' && (() => {
+{field.type === 'relation' && (async () => {
   const config = JSON.parse(field.config || '{}');
   const allowMultiple = config.allow_multiple;
   const relatedCategoryId = config.related_category_id;
@@ -147,9 +151,9 @@ const config = field.config ? JSON.parse(field.config) : {};
     );
   }
   
-  const relatedCategory = db.prepare('SELECT * FROM categories WHERE id = ?').get(relatedCategoryId);
+  const relatedCategory = await supabase.from('categories').select('*').eq('id', relatedCategoryId).single();
   
-  if (!relatedCategory) {
+  if (!relatedCategory || !relatedCategory.data) {
     return (
       <div class="p-3 bg-red-50 border border-red-200 rounded-lg">
         <p class="text-sm text-red-700">⚠️ Error: Categoría no existe</p>
@@ -165,10 +169,10 @@ const config = field.config ? JSON.parse(field.config) : {};
       {/* Mostrar relaciones actuales */}
       {value && (Array.isArray(value) ? value.length > 0 : value) && (
         <div class="flex flex-wrap gap-2 mb-3">
-          {(Array.isArray(value) ? value : [value]).map((relatedId: string) => {
-            const relatedEntry = db.prepare('SELECT * FROM entries WHERE id = ?').get(relatedId);
+          {(Array.isArray(value) ? value : [value]).map(async (relatedId: string) => {
+            const relatedEntry = await supabase.from('entries').select('*').eq('id', relatedId).single();
             
-            if (!relatedEntry) {
+            if (!relatedEntry || !relatedEntry.data) {
               return (
                 <div class="inline-flex items-center gap-2 px-3 py-2 bg-red-50 border border-red-200 rounded-lg">
                   <span class="text-xs text-red-700">⚠️ Eliminada</span>
@@ -186,18 +190,18 @@ const config = field.config ? JSON.parse(field.config) : {};
               <div class="inline-flex items-center gap-2 px-3 py-2 bg-white border-2 border-indigo-200 rounded-lg group hover:border-indigo-400 transition">
                 <div 
                   class="w-3 h-3 rounded-full flex-shrink-0" 
-                  style={`background-color: ${(relatedCategory as any).color}`}
+                  style={`background-color: ${(relatedCategory.data as any).color}`}
                 ></div>
                 <div class="flex flex-col">
                   <a 
-                    href={`/entries/${(relatedCategory as any).slug}/${relatedId}`}
+                    href={`/entries/${(relatedCategory.data as any).slug}/${relatedId}`}
                     class="font-medium text-gray-900 hover:text-indigo-600 text-sm"
                     target="_blank"
                   >
-                    {(relatedEntry as any).title}
+                    {(relatedEntry.data as any).title}
                   </a>
                   {isSelfRelation && (
-                    <span class="text-xs text-gray-500">{(relatedCategory as any).name}</span>
+                    <span class="text-xs text-gray-500">{(relatedCategory.data as any).name}</span>
                   )}
                 </div>
                 <button 
@@ -241,10 +245,10 @@ const config = field.config ? JSON.parse(field.config) : {};
           +
         </button>
         <a 
-          href={`/entries/${(relatedCategory as any).slug}`}
+          href={`/entries/${(relatedCategory.data as any).slug}`}
           target="_blank"
           class="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition text-sm flex items-center gap-2"
-          title={`Ver todas las entradas de ${(relatedCategory as any).name}`}
+          title={`Ver todas las entradas de ${(relatedCategory.data as any).name}`}
         >
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
@@ -254,9 +258,9 @@ const config = field.config ? JSON.parse(field.config) : {};
       
       <p class="text-xs text-gray-500 mt-2">
         {isSelfRelation ? (
-          <span>🔄 Auto-relación con <strong>{(relatedCategory as any).name}</strong></span>
+          <span>🔄 Auto-relación con <strong>{(relatedCategory.data as any).name}</strong></span>
         ) : (
-          <span>Relacionado con: <strong>{(relatedCategory as any).name}</strong></span>
+          <span>Relacionado con: <strong>{(relatedCategory.data as any).name}</strong></span>
         )}
         {allowMultiple && ' (múltiple)'}
       </p>

@@ -1,22 +1,16 @@
 // src/pages/api/categories.ts
 import type { APIRoute } from 'astro';
-import { db } from '../../lib/db';
+import { getSupabaseClient } from '@/lib/supabaseClient';
 import { nanoid } from 'nanoid';
 
+const supabase = getSupabaseClient();
 // GET - Listar todas las categorías
 export const GET: APIRoute = async ({ url }) => {
   try {
-    const includeSystem = url.searchParams.get('system') === 'true';
     
-    let query = 'SELECT * FROM categories';
-    if (!includeSystem) {
-      query += ' WHERE is_system = 0';
-    }
-    query += ' ORDER BY created_at';
+    const categories = await supabase.from('categories').select('*').orderBy("created_at");
     
-    const categories = db.prepare(query).all();
-    
-    return new Response(JSON.stringify(categories), {
+    return new Response(JSON.stringify(categories.data), {
       status: 200,
       headers: { 'Content-Type': 'application/json' }
     });
@@ -45,49 +39,51 @@ export const POST: APIRoute = async ({ request }) => {
         headers: { 'Content-Type': 'application/json' }
       });
     }
+
+    console.log(slug)
     
-    const id = nanoid();
     const now = new Date().toISOString();
     
     // Obtener el ID de Entity para heredar
-    const entityCategory = db.prepare('SELECT id FROM categories WHERE slug = ?').get('entity') as { id: string } | undefined;
-    const inheritsFrom = inherits_from || (entityCategory ? entityCategory.id : null);
+    const entityCategory = await supabase.from('categories').select('id').eq('slug', 'entity').single();
+    const inheritsFrom = inherits_from || (entityCategory.data ? entityCategory.data.id : null);
     
-    const stmt = db.prepare(`
-      INSERT INTO categories (id, name, slug, description, is_system, inherits_from, icon, color, created_at)
-      VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?)
-    `);
-    
-    stmt.run(id, name, slug, description || '', inheritsFrom, icon || 'box', color || '#6b7280', now);
+    await supabase.from('categories').insert({
+      name: name,
+      slug: slug,
+      description: description || '',
+      is_system: 0,
+      inherits_from: inheritsFrom,
+      icon: icon || 'box',
+      color: color || '#6b7280',
+      created_at: now
+    });
+
+    const newCategoryRecord = await supabase.from('categories').select('id').eq('slug', slug).single();
     
     // Si hereda de Entity, copiar sus campos base
     if (inheritsFrom) {
-      const parentFields = db.prepare('SELECT * FROM fields WHERE category_id = ?').all(inheritsFrom);
+      const parentFields = await supabase.from('fields').select('*').eq('category_id', inheritsFrom);
       
-      const insertField = db.prepare(`
-        INSERT INTO fields (id, category_id, name, label, type, required, unique_value, config, field_order, help_text)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-      
-      for (const field of parentFields as any[]) {
-        insertField.run(
-          nanoid(),
-          id,
-          field.name,
-          field.label,
-          field.type,
-          field.required,
-          field.unique_value,
-          field.config,
-          field.field_order,
-          field.help_text
-        );
+      for (const field of parentFields.data as any[]) {
+
+        await supabase.from('fields').insert({ 
+          category_id: newCategoryRecord.data.id,
+          name: field.name,
+          label: field.label,
+          type: field.type,
+          required: field.required,
+          unique_value: field.unique_value,
+          config: field.config,
+          field_order: field.field_order,
+          help_text: field.help_text
+        });
       }
     }
     
-    const newCategory = db.prepare('SELECT * FROM categories WHERE id = ?').get(id);
+    const newCategory = await supabase.from('categories').select('*').eq('id', newCategoryRecord.data.id).single();
     
-    return new Response(JSON.stringify(newCategory), {
+    return new Response(JSON.stringify(newCategory.data), {
       status: 201,
       headers: { 'Content-Type': 'application/json' }
     });
@@ -114,9 +110,9 @@ export const DELETE: APIRoute = async ({ request }) => {
     }
     
     // Verificar que no sea una categoría del sistema
-    const category = db.prepare('SELECT is_system FROM categories WHERE id = ?').get(id) as { is_system: number } | undefined;
+    const category = await supabase.from('categories').select('is_system').eq('id', id).single();
     
-    if (category && category.is_system === 1) {
+    if (category.data && category.data.is_system === 1) {
       return new Response(JSON.stringify({ 
         error: 'Cannot delete system categories' 
       }), {
@@ -125,7 +121,7 @@ export const DELETE: APIRoute = async ({ request }) => {
       });
     }
     
-    db.prepare('DELETE FROM categories WHERE id = ?').run(id);
+    await supabase.from('categories').delete().eq('id', id);
     
     return new Response(JSON.stringify({ success: true }), {
       status: 200,

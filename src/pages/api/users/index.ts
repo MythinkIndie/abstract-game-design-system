@@ -1,7 +1,8 @@
 import type { APIRoute } from 'astro';
-import { db } from '@/lib/db';
-import { nanoid } from 'nanoid';
+import { getSupabaseClient } from '@/lib/supabaseClient';
 import crypto from 'crypto';
+
+const supabase = getSupabaseClient();
 
 export const POST: APIRoute = async ({ request }) => {
   try {
@@ -31,9 +32,17 @@ export const POST: APIRoute = async ({ request }) => {
     // Hash de la contraseña
     const hashedPassword = crypto.createHash('sha256').update(password).digest('hex');
 
-    await db!.prepare('INSERT INTO users (username, password_hash) VALUES (?, ?)').run(username, hashedPassword);
-    const newUserId: any = await db!.prepare('SELECT id FROM users WHERE username = ?').get(username);
-    await db!.prepare('INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)').run(newUserId.id, role);
+    await supabase.from('users').insert({
+      username,
+      password_hash: hashedPassword
+    });
+
+    //!.prepare('INSERT INTO users (username, password_hash) VALUES (?, ?)').run(username, hashedPassword);
+    const newUserId: any = await supabase.from('users').select('id').eq('username', username).single();
+    await supabase.from('user_roles').insert({
+      user_id: newUserId.data.id,
+      role_id: role
+    });
 
     return new Response(JSON.stringify({ 
       success: true,
@@ -65,8 +74,8 @@ export const DELETE: APIRoute = async ({ request }) => {
         headers: { 'Content-Type': 'application/json' }
       });
     }
-    await db!.prepare('DELETE FROM user_roles WHERE user_id = ?').run(id);
-    await db!.prepare('DELETE FROM users WHERE id = ?').run(id);
+    await supabase.from('user_roles').delete().eq('user_id', id);
+    await supabase.from('users').delete().eq('id', id);
 
     return new Response(JSON.stringify({ 
       success: true,

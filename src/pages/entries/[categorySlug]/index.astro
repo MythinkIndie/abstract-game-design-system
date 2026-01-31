@@ -1,39 +1,31 @@
 ---
 // src/pages/entries/[categorySlug]/index.astro
-import { db } from '@/lib/db';
+import { getSupabaseClient } from "@/lib/supabaseClient";
 
 const { categorySlug } = Astro.params;
 
-const category = db!.prepare('SELECT * FROM categories WHERE slug = ?').get(categorySlug);
+const supabase = getSupabaseClient();
+const category = await supabase.from('categories').select('*').eq('slug', categorySlug).single();
 
-if (!category) {
+if (!category.data) {
   return Astro.redirect('/categories');
 }
 
-const entries = db!.prepare(`
-  SELECT * FROM entries 
-  WHERE category_id = ? 
-  ORDER BY updated_at DESC
-`).all((category as any).id);
-
-const fields = db!.prepare('SELECT * FROM fields WHERE category_id = ? ORDER BY field_order').all((category as any).id);
+const entries = await supabase.from('entries').select('*').eq('category_id', (category.data as any).id).order('updated_at', { ascending: false });
 
 // Obtener estado de tareas para cada entrada
-const taskCategory = db!.prepare('SELECT id FROM categories WHERE slug = ?').get('task') as any;
-const entriesWithTaskStatus = (entries as any[]).map(entry => {
+const taskCategory = await supabase.from('categories').select('id').eq('slug', 'task').single();
+
+const entriesWithTaskStatus = await Promise.all((entries.data as any[]).map(async (entry) => {
   let hasPendingTasks = false;
   let totalTasks = 0;
   let completedTasks = 0;
   
-  if (taskCategory) {
+  if (taskCategory.data) {
     // Buscar tareas que apliquen a esta entrada
-    const allTasks = db!.prepare(`
-      SELECT id, data FROM entries 
-      WHERE category_id = ? 
-        AND json_extract(data, '$.related_category_id') = ?
-    `).all(taskCategory.id, (category as any).id) as any[];
+    const allTasks = await supabase.from('entries').select('id, data').eq('category_id', taskCategory.data.id);
     
-    const applicableTasks = allTasks.filter((task: any) => {
+    const applicableTasks = allTasks.data.filter((task: any) => {
       const data = JSON.parse(task.data);
       return data.applies_to_all || (data.specific_entry_ids && data.specific_entry_ids.includes(entry.id));
     });
@@ -41,12 +33,9 @@ const entriesWithTaskStatus = (entries as any[]).map(entry => {
     totalTasks = applicableTasks.length;
     
     // Contar completadas
-    const completed = db!.prepare(`
-      SELECT COUNT(*) as count FROM task_completion
-      WHERE entry_id = ? AND is_completed = 1
-    `).get(entry.id) as any;
+    const completed = await supabase.from('task_completion').select('count(*) as count').eq('entry_id', entry.id).eq('is_completed', 1);
     
-    completedTasks = completed?.count || 0;
+    completedTasks = completed?.data?.[0]?.count || 0;
     hasPendingTasks = totalTasks > completedTasks;
   }
   
@@ -56,7 +45,9 @@ const entriesWithTaskStatus = (entries as any[]).map(entry => {
     totalTasks,
     completedTasks
   };
-});
+}));
+console.log(entries)
+console.log(entriesWithTaskStatus);
 ---
 
 <!DOCTYPE html>
@@ -64,7 +55,7 @@ const entriesWithTaskStatus = (entries as any[]).map(entry => {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Entradas de {(category as any).name}</title>
+  <title>Entradas de {(category.data as any).name}</title>
 </head>
 <body class="bg-gray-50 min-h-screen">
   <header class="bg-white shadow-sm border-b border-gray-200">
@@ -72,12 +63,12 @@ const entriesWithTaskStatus = (entries as any[]).map(entry => {
       <a href="/categories" class="text-sm text-gray-500 hover:text-gray-700">← Volver a categorías</a>
       <div class="flex items-center justify-between mt-2">
         <div class="flex items-center gap-4">
-          <div class="w-12 h-12 rounded-lg flex items-center justify-center text-white font-bold text-lg" style={`background-color: ${(category as any).color}`}>
-            {(category as any).name.substring(0, 2).toUpperCase()}
+          <div class="w-12 h-12 rounded-lg flex items-center justify-center text-white font-bold text-lg" style={`background-color: ${(category.data as any).color}`}>
+            {category.data &&(category.data as any).name.substring(0, 2).toUpperCase()}
           </div>
           <div>
-            <h1 class="text-2xl font-bold text-gray-900">Entradas de {(category as any).name}</h1>
-            <p class="text-sm text-gray-500">{entries.length} {entries.length === 1 ? 'entrada' : 'entradas'}</p>
+            <h1 class="text-2xl font-bold text-gray-900">Entradas de {(category.data as any).name}</h1>
+            <p class="text-sm text-gray-500">{entries.data.length} {entries.data.length === 1 ? 'entrada' : 'entradas'}</p>
           </div>
         </div>
         <div class="flex gap-3">
@@ -93,14 +84,14 @@ const entriesWithTaskStatus = (entries as any[]).map(entry => {
   </header>
 
   <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-    {entries.length === 0 ? (
+    {entries.data && entries.data.length === 0 ? (
       <div class="bg-white rounded-lg shadow border border-gray-200 p-12 text-center">
         <div class="max-w-md mx-auto">
           <svg class="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
           </svg>
           <h3 class="text-lg font-semibold text-gray-900 mb-2">No hay entradas todavía</h3>
-          <p class="text-gray-500 mb-6">Crea tu primera entrada de tipo {(category as any).name}</p>
+          <p class="text-gray-500 mb-6">Crea tu primera entrada de tipo {(category.data as any).name}</p>
           <a href={`/entries/${categorySlug}/create`} class="inline-block px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition font-medium">
             Crear Primera Entrada
           </a>
@@ -108,11 +99,13 @@ const entriesWithTaskStatus = (entries as any[]).map(entry => {
       </div>
     ) : (
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {entries.map((entry: any) => {
+        {entriesWithTaskStatus && entriesWithTaskStatus.map((entry: any) => {
           let data = {};
           try {
             data = JSON.parse(entry.data);
-          } catch {}
+          } catch (e) {
+            console.error('Error parsing entry data:', e);
+          }
           
           return (
             <a 
@@ -125,7 +118,7 @@ const entriesWithTaskStatus = (entries as any[]).map(entry => {
                 <div class="flex items-start justify-between mb-3">
                   <h3 class="text-lg font-semibold text-gray-900 flex-1 line-clamp-2">{entry.title}</h3>
                   <div class="flex flex-col items-end gap-1 ml-3">
-                    <div class="w-2 h-2 rounded-full" style={`background-color: ${(category as any).color}`}></div>
+                    <div class="w-2 h-2 rounded-full" style={`background-color: ${(category.data as any).color}`}></div>
                     {entry.hasPendingTasks && (
                       <span class="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-medium rounded">
                         ⚠️ Tareas
@@ -134,7 +127,7 @@ const entriesWithTaskStatus = (entries as any[]).map(entry => {
                   </div>
                 </div>
                 
-                {(data as any).description && (
+                {(data as any).entity_description && (
                   <p class="text-sm text-gray-600 line-clamp-3 mb-4">
                     {(data as any).description.replace(/#/g, '').substring(0, 150)}...
                   </p>

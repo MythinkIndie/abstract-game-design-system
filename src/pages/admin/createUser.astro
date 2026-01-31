@@ -1,7 +1,8 @@
 ---
-import { db } from '@/lib/db';
+import { getSupabaseClient } from "@/lib/supabaseClient";
 
-const roles = db!.prepare('SELECT * FROM roles').all();
+const supabase = getSupabaseClient();
+const rolesResponse = await supabase.from('roles').select('*');
 ---
 
 
@@ -86,7 +87,7 @@ const roles = db!.prepare('SELECT * FROM roles').all();
           required
           class="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
         >
-          {roles.map((role: any) => (
+          {rolesResponse.data && rolesResponse.data.map((role: any) => (
             <option value={role.id}>
               {role.name}
             </option>

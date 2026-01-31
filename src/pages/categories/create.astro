@@ -171,6 +171,7 @@ const icons = [
     }
 
     nameInput.addEventListener('input', () => {
+
       const slug = generateSlug(nameInput.value);
       slugInput.value = slug;
       
@@ -215,6 +216,8 @@ const icons = [
         color: colorInput.value,
         icon: 'box'
       };
+
+      console.log('Submitting form data:', formData);
       
       try {
         const response = await fetch('/api/categories', {

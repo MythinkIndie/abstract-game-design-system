@@ -1,5 +1,5 @@
 ---
-import { db } from '@/lib/db';
+import { getSupabaseClient } from '@/lib/supabaseClient';
 import EntryTasksWidget from '@/components/EntryTasksWidget.astro';
 import FieldRenderer from '@/components/FieldRenderer.astro';
 import EntryHeader from './components/EntryHeader.astro';
@@ -9,27 +9,29 @@ import EntryAssignment from './components/EntryAssignment.astro';
 
 const { categorySlug, id } = Astro.params;
 
-const category = db!.prepare('SELECT * FROM categories WHERE slug = ?').get(categorySlug);
-if (!category) return Astro.redirect('/categories');
+const supabase = getSupabaseClient();
+const category = await supabase.from('categories').select('*').eq('slug', categorySlug).single();
+if (!category || !category.data) return Astro.redirect('/categories');
 
-const entry = db!.prepare('SELECT * FROM entries WHERE id = ?').get(id);
-if (!entry) return Astro.redirect(`/entries/${categorySlug}`);
+const entry = await supabase.from('entries').select('*').eq('id', id).single();
+if (!entry || !entry.data) return Astro.redirect(`/entries/${categorySlug}`);
 
-const fields = db!.prepare('SELECT * FROM fields WHERE category_id = ? ORDER BY field_order').all((category as any).id);
+const fields = await supabase.from('fields').select('*').eq('category_id', (category.data as any).id).order('field_order', { ascending: true });
 
 let entryData: any = {};
 try {
-  entryData = JSON.parse((entry as any).data);
-} catch {}
+  entryData = JSON.parse((entry.data as any).data);
+} catch (e) {
+  console.error('Error parsing entry data:', e);
+}
 
+console.log('Entry Data:', fields.data);
 // Calcular progreso
-const completionStates = db!.prepare(`
-  SELECT field_id, is_complete FROM field_completion WHERE entry_id = ?
-`).all(id);
+const completionStates = await supabase.from('field_completion').select('field_id, is_complete, completion_notes').eq('entry_id', id);
 
-const completionMap = new Map((completionStates as any[]).map(c => [c.field_id, {is_complete: c.is_complete === 1, completion_notes: c.completion_notes}]));
+const completionMap = new Map((completionStates.data as any[]).map(c => [c.field_id, {is_complete: c.is_complete === 1, completion_notes: c.completion_notes}]));
 
-const fieldsWithCompletion = (fields as any[]).map(field => {
+const fieldsWithCompletion = (fields.data as any[]).map(field => {
   const hasValue = entryData[field.name] !== undefined && entryData[field.name] !== null && entryData[field.name] !== '';
   const manualCompletion = completionMap.get(field.id);
   
@@ -42,6 +44,7 @@ const fieldsWithCompletion = (fields as any[]).map(field => {
 });
 
 const totalFields = fieldsWithCompletion.length;
+console.log('Fields with Completion:', fieldsWithCompletion);
 const completedFields = fieldsWithCompletion.filter(f => f.is_complete).length;
 const progress = totalFields > 0 ? Math.round((completedFields / totalFields) * 100) : 0;
 
@@ -56,12 +59,12 @@ for (const field of fieldsWithCompletion) {
     
     for (const relId of relatedIds) {
       if (relId && !relatedEntries.has(relId)) {
-        const relEntry = db!.prepare('SELECT id, title, category_id FROM entries WHERE id = ?').get(relId) as any;
-        if (relEntry) {
-          const relCategory = db!.prepare('SELECT slug FROM categories WHERE id = ?').get(relEntry.category_id) as any;
+        const relEntry = await supabase.from('entries').select('id, title, category_id').eq('id', relId).single();
+        if (relEntry.data) {
+          const relCategory = await supabase.from('categories').select('slug').eq('id', relEntry.data.category_id).single();
           relatedEntries.set(relId, {
-            title: relEntry.title,
-            categorySlug: relCategory?.slug
+            title: relEntry.data.title,
+            categorySlug: relCategory?.data?.slug
           });
         }
       }
@@ -75,7 +78,7 @@ for (const field of fieldsWithCompletion) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{(entry as any).title} - {(category as any).name}</title>
+  <title>{(entry.data as any).title} - {(category.data as any).name}</title>
   <style>
     .editable-field {
       cursor: text;
@@ -94,7 +97,7 @@ for (const field of fieldsWithCompletion) {
   </style>
 </head>
 <body class="bg-gray-50 min-h-screen" data-entry-id={id} data-related-entries={JSON.stringify(Object.fromEntries(relatedEntries))}>
-  <EntryHeader entry={entry} category={category} entryData={entryData} />
+  <EntryHeader entry={entry.data} category={category.data} entryData={entryData} />
 
   <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -109,7 +112,7 @@ for (const field of fieldsWithCompletion) {
             <p class="text-xs text-gray-500 mt-1">Click en cualquier campo para editarlo directamente</p>
           </div>
           <div class="p-6 space-y-4">
-            {fieldsWithCompletion.map((field: any) => {
+            {fieldsWithCompletion && fieldsWithCompletion.map((field: any) => {
               const value = entryData[field.name];
               const isEmpty = value === undefined || value === null || value === '';
               
@@ -151,7 +154,7 @@ for (const field of fieldsWithCompletion) {
                   )}
                   
                   <div class="ml-7 mt-2" data-field-container={field.name}>
-                    <FieldRenderer db={db} field={enrichedField} value={value} parentCategory={category}/>
+                    <FieldRenderer field={enrichedField} value={value} parentCategory={category.data}/>
                   </div>
                 </div>
               );
@@ -164,7 +167,7 @@ for (const field of fieldsWithCompletion) {
 
       <!-- Sidebar -->
       <div class="space-y-6">
-        <EntryTasksWidget entryId={id!} categoryId={(category as any).id} />
+        <EntryTasksWidget entryId={id!} categoryId={(category.data as any).id} />
         <EntryAssignment assignedTo={entryData._assigned_to} />
         
         <!-- Información -->
@@ -178,13 +181,13 @@ for (const field of fieldsWithCompletion) {
             <div>
               <dt class="text-xs font-medium text-gray-500">Creado</dt>
               <dd class="text-sm text-gray-900">
-                {new Date((entry as any).created_at).toLocaleDateString('es-ES')}
+                {new Date((entry.data as any).created_at).toLocaleDateString('es-ES')}
               </dd>
             </div>
             <div>
               <dt class="text-xs font-medium text-gray-500">Última Actualización</dt>
               <dd class="text-sm text-gray-900">
-                {new Date((entry as any).updated_at).toLocaleDateString('es-ES')}
+                {new Date((entry.data as any).updated_at).toLocaleDateString('es-ES')}
               </dd>
             </div>
           </dl>

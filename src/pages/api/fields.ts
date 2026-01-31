@@ -1,7 +1,7 @@
 import type { APIRoute } from 'astro';
-import {db} from '@/lib/db';
-import { nanoid } from 'nanoid';
+import { getSupabaseClient } from '@/lib/supabaseClient';
 
+const supabase = getSupabaseClient();
 // GET - Obtener campos de una categoría
 export const GET: APIRoute = async ({ url }) => {
   try {
@@ -16,9 +16,9 @@ export const GET: APIRoute = async ({ url }) => {
       });
     }
     
-    const fields = db!.prepare('SELECT * FROM fields WHERE category_id = ? ORDER BY field_order, created_at').all(categoryId);
+    const fields = await supabase.from('fields').select('*').eq('category_id', categoryId).order('field_order', { ascending: true });
     
-    return new Response(JSON.stringify(fields), {
+    return new Response(JSON.stringify(fields.data), {
       status: 200,
       headers: { 'Content-Type': 'application/json' }
     });
@@ -73,11 +73,13 @@ export const POST: APIRoute = async ({ request }) => {
         });
       }
 
-      const relatedCategory = db!
-        .prepare('SELECT id FROM categories WHERE id = ?')
-        .get(configObj.related_category_id);
+      const relatedCategory = await supabase
+        .from('categories')
+        .select('id')
+        .eq('id', configObj.related_category_id)
+        .single();
 
-      if (!relatedCategory) {
+      if (!relatedCategory || !relatedCategory.data) {
         return new Response(JSON.stringify({
           error: 'La categoría relacionada no existe'
         }), {
@@ -86,8 +88,6 @@ export const POST: APIRoute = async ({ request }) => {
         });
       }
     }
-    
-    const id = nanoid();
     
     // Asegurar que config sea un string JSON válido
     let configStr: string;
@@ -106,28 +106,22 @@ export const POST: APIRoute = async ({ request }) => {
     } else {
       configStr = JSON.stringify({});
     }
+
+    await supabase.from('fields').insert({ 
+      category_id: category_id,
+      name: name,
+      label: label,
+      type: type,
+      required: required ? 1 : 0,
+      unique_value: unique_value ? 1 : 0,
+      config: configStr,
+      field_order: field_order || 0,
+      help_text: help_text || ''
+    });
     
-    const stmt = db!.prepare(`
-      INSERT INTO fields (id, category_id, name, label, type, required, unique_value, config, field_order, help_text)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
+    const newFieldRecord = await supabase.from('fields').select('*').eq('category_id', category_id).eq('name', name).order('created_at', { ascending: false }).limit(1).single();
     
-    stmt.run(
-      id,
-      category_id,
-      name,
-      label,
-      type,
-      required ? 1 : 0,
-      unique_value ? 1 : 0,
-      configStr,
-      field_order || 0,
-      help_text || ''
-    );
-    
-    const newField = db!.prepare('SELECT * FROM fields WHERE id = ?').get(id);
-    
-    return new Response(JSON.stringify(newField), {
+    return new Response(JSON.stringify(newFieldRecord.data), {
       status: 201,
       headers: { 'Content-Type': 'application/json' }
     });
@@ -193,11 +187,11 @@ export const PUT: APIRoute = async ({ request }) => {
     
     values.push(id);
     
-    db!.prepare(`UPDATE fields SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+    await supabase.from('fields').update(Object.fromEntries(updates.map((update, i) => [update.split(' = ')[0], values[i]]))).eq('id', id);
     
-    const updatedField = db!.prepare('SELECT * FROM fields WHERE id = ?').get(id);
+    const updatedField = await supabase.from('fields').select('*').eq('id', id).single();
     
-    return new Response(JSON.stringify(updatedField), {
+    return new Response(JSON.stringify(updatedField.data), {
       status: 200,
       headers: { 'Content-Type': 'application/json' }
     });
@@ -223,7 +217,7 @@ export const DELETE: APIRoute = async ({ request }) => {
       });
     }
     
-    db!.prepare('DELETE FROM fields WHERE id = ?').run(id);
+    await supabase.from('fields').delete().eq('id', id);
     
     return new Response(JSON.stringify({ success: true }), {
       status: 200,

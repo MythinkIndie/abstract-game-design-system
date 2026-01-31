@@ -1,7 +1,9 @@
 import type { APIRoute } from 'astro';
-import { db } from '@/lib/db';
+import { getServiceClient } from '@/lib/supabaseClient';
 import { nanoid } from 'nanoid';
 import crypto from 'crypto';
+
+const supabase = getServiceClient();
 
 export const POST: APIRoute = async ({ request, cookies }) => {
   try {
@@ -17,7 +19,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     }
     
     // Obtener contraseña guardada
-    const appUserRow = db!.prepare('SELECT username, password_hash FROM users WHERE username = ?').get(username) as any;
+    const appUserRow = await supabase.from('users').select('username, password_hash').eq('username', username).single();
     
     if (!appUserRow) {
       return new Response(JSON.stringify({ 
@@ -27,12 +29,13 @@ export const POST: APIRoute = async ({ request, cookies }) => {
         headers: { 'Content-Type': 'application/json' }
       });
     }
-    console.log(appUserRow)
     
+    console.log('appUserRow', appUserRow);
+
     // Verificar contraseña (hash SHA-256)
     const hashedPassword = crypto.createHash('sha256').update(password).digest('hex');
     
-    if (hashedPassword !== appUserRow.password_hash) {
+    if (hashedPassword !== appUserRow.data!.password_hash) {
       return new Response(JSON.stringify({ 
         error: 'Nombre de usuario o contraseña incorrectos 2' 
       }), {
@@ -43,19 +46,21 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     
     // Crear sesión
     const token = nanoid(32);
-    const sessionId = nanoid();
     const now = new Date().toISOString();
+
+    await supabase.from('sessions').insert({
+      token,
+      username,
+      created_at: now,
+      last_activity: now
+    });
     
-    db!.prepare(`
-      INSERT INTO sessions (id, token, username, created_at, last_activity)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(sessionId, token, username, now, now);
-    
-    // Registrar actividad
-    db!.prepare(`
-      INSERT INTO activity_logs (id, username, action, details, created_at)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(nanoid(), username, 'login', 'Usuario inició sesión', now);
+    await supabase.from('activity_logs').insert({
+      username,
+      action: 'login',
+      details: 'Usuario inició sesión',
+      created_at: now
+    });
     
     // Establecer cookies (7 días)
     cookies.set('auth_token', token, {
@@ -94,15 +99,18 @@ export const GET: APIRoute = async ({ cookies }) => {
   const username = cookies.get('username')?.value;
   
   if (token) {
-    // Eliminar sesión
-    db!.prepare('DELETE FROM sessions WHERE token = ?').run(token);
+    
+    await supabase.from('sessions').delete().eq('token', token);
     
     // Registrar actividad
     if (username) {
-      db!.prepare(`
-        INSERT INTO activity_logs (id, username, action, details, created_at)
-        VALUES (?, ?, ?, ?, ?)
-      `).run(nanoid(), username, 'logout', 'Usuario cerró sesión', new Date().toISOString());
+      await supabase.from('activity_logs').insert({
+        id: nanoid(),
+        username,
+        action: 'logout',
+        details: 'Usuario cerró sesión',
+        created_at: new Date().toISOString()
+      });
     }
   }
   

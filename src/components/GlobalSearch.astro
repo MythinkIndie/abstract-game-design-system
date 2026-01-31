@@ -1,7 +1,9 @@
 ---
-import {db} from "../lib/db";
+import { getServiceClient } from '@/lib/supabaseClient';
 
-const categories = db!.prepare('SELECT id, name, slug FROM categories ORDER BY name').all();
+const supabase = getServiceClient();
+
+const categories = await supabase.from('categories').select('id, name, slug').order('name');
 // const allTags = db.prepare(`
 //   SELECT DISTINCT json_extract(value, '$') as tag
 //   FROM entries, json_each(json_extract(data, '$.tags'))
@@ -62,7 +64,7 @@ const categories = db!.prepare('SELECT id, name, slug FROM categories ORDER BY n
           
           <select id="categoryFilter" class="text-xs px-3 py-1 border border-gray-300 rounded-lg">
             <option value="">Todas las categorías</option>
-            {categories.map((cat: any) => (
+            {categories.data && categories.data.map((cat: any) => (
               <option value={cat.id}>{cat.name}</option>
             ))}
           </select>
