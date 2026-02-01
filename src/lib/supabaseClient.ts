@@ -5,8 +5,8 @@ let supabaseClient: any | null = null;
 
 export const getSupabaseClient = () => {
   if (!supabaseClient) {
-    const supabaseUrl = import.meta.env.PUBLIC_SUPABASE_URL;
-    const supabaseAnonKey = import.meta.env.PUBLIC_SUPABASE_ANON_KEY;
+    const supabaseUrl = import.meta.env.SUPABASE_URL;
+    const supabaseAnonKey = import.meta.env.SUPABASE_ANON_KEY;
     const supabaseServiceKey = import.meta.env.SUPABASE_SERVICE_KEY;
     
     if (!supabaseUrl || !supabaseAnonKey) {
