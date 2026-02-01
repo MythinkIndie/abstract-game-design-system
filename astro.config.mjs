@@ -6,7 +6,5 @@ import vercel from '@astrojs/vercel';
 // https://astro.build/config
 export default defineConfig({
   integrations: [tailwind()],
-  output: "server",
   adapter: vercel(),
-  site: "https://abstract-game-design-system.vercel.app/"
 });
