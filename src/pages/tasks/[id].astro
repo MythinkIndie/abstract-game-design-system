@@ -1,56 +1,58 @@
 ---
 // src/pages/tasks/[id].astro
-import { db } from '@/lib/db';
+import { getSupabaseClient } from "@/lib/supabaseClient"; 
 
 const { id } = Astro.params;
 
-const task = db.prepare('SELECT * FROM entries WHERE id = ?').get(id);
+const supabase = getSupabaseClient();
 
-if (!task) {
+const task = await supabase.from('entries').select('*').eq('id', id).single();
+
+if (!task.data) {
   return Astro.redirect('/tasks');
 }
 
-const taskData = JSON.parse((task as any).data);
+const taskData = JSON.parse((task.data as any).data);
 
 // Obtener categoría relacionada si existe
 let relatedCategory = null;
 if (taskData.related_category_id) {
-  relatedCategory = db.prepare('SELECT * FROM categories WHERE id = ?').get(taskData.related_category_id);
+  relatedCategory = await supabase.from('categories').select('*').eq('id', taskData.related_category_id).single();
 }
 
 // Obtener subtareas
-const taskCategory = db.prepare('SELECT id FROM categories WHERE slug = ?').get('task') as any;
-const subtasks = taskCategory ? db.prepare(`
-  SELECT * FROM entries 
-  WHERE category_id = ? AND json_extract(data, '$.parent_task_id') = ?
-  ORDER BY json_extract(data, '$.order_index') ASC, created_at ASC
-`).all(taskCategory.id, id) : [];
+const taskCategory = await supabase.from('categories').select('*').eq('slug', 'task').single();
+const allCategoriesTasks = taskCategory.data ? await supabase.from('entries').select('*').eq('category_id', taskCategory.data.id) : [];
+
+allCategoriesTasks.data = allCategoriesTasks.data.map((t: any) => {
+  return { ...t, data: JSON.parse(t.data) };
+});
+
+const subtasks = allCategoriesTasks.data.filter((t: any) => t.data.parent_task_id === id);
 
 // Obtener tarea padre si existe
 let parentTask = null;
 if (taskData.parent_task_id) {
-  parentTask = db.prepare('SELECT * FROM entries WHERE id = ?').get(taskData.parent_task_id) as any;
-  if (parentTask) {
-    parentTask.data = JSON.parse(parentTask.data);
+  parentTask = await supabase.from('entries').select('*').eq('id', taskData.parent_task_id).single();
+  if (parentTask.data.data) {
+    parentTask.data.data = JSON.parse(parentTask.data.data);
   }
 }
 
 // Obtener categorías para selector
-const categories = db.prepare('SELECT id, name, slug FROM categories WHERE is_system = 0 ORDER BY name').all();
+const categories = await supabase.from('categories').select('id, name, slug').eq('is_system', 0).order('name');
 
 // Obtener entradas de la categoría relacionada
 let categoryEntries: any[] = [];
 if (taskData.related_category_id) {
-  categoryEntries = db.prepare('SELECT id, title FROM entries WHERE category_id = ? ORDER BY title')
-    .all(taskData.related_category_id);
+  categoryEntries = await supabase.from('entries').select('id, title').eq('category_id', taskData.related_category_id).order('title');
 }
 
-const taskStatuses = db.prepare('SELECT * FROM task_statuses ORDER BY order_index').all() as any[];
-
-let statusOptions: any[] = taskStatuses;
+const taskStatuses = await supabase.from('task_statuses').select('*').order('order_index');
+let statusOptions: any[] = taskStatuses.data;
 if (statusOptions.length === 0) {
-  const taskFields = db.prepare('SELECT * FROM fields WHERE category_id = ?').all(taskCategory.id) as any[];
-  const statusField = taskFields.find((f: any) => f.name === 'status' && f.type === 'enum');
+  const taskFields = await supabase.from('fields').select('*').eq('category_id', taskCategory.data.id);
+  const statusField = taskFields.data.find((f: any) => f.name === 'status' && f.type === 'enum');
   
   if (statusField) {
     try {
@@ -67,8 +69,8 @@ if (statusOptions.length === 0) {
   }
 }
 
-const taskFields = db.prepare('SELECT * FROM fields WHERE category_id = ?').all(taskCategory.id) as any[];
-const priorityField = taskFields.find((f: any) => f.name === 'priority' && f.type === 'enum');
+const taskFields = await supabase.from('fields').select('*').eq('category_id', taskCategory.data.id);
+const priorityField = taskFields.data.find((f: any) => f.name === 'priority' && f.type === 'enum');
 
 let priorityOptions = ['low', 'medium', 'high', 'critical'];
 if (priorityField) {
@@ -150,7 +152,7 @@ if (priorityField) {
               id="taskStatus"
               class="w-full px-3 py-2 border border-gray-300 rounded-lg"
             >
-              {statusOptions.map((option: any) => (
+              {statusOptions && statusOptions.map((option: any) => (
                 <option value={option.id} selected={option.id === (taskData.status || statusOptions[0].id)} class={`bg-[${option.color}] text-[${option.color}]`}>
                   {option.icon || ""}{option.name}
                 </option>
@@ -172,11 +174,11 @@ if (priorityField) {
           </div>
         </div>
 
-        {parentTask && (
+        {parentTask && parentTask.data && (
           <div class="p-4 bg-blue-50 border border-blue-200 rounded-lg">
             <p class="text-sm text-blue-900">
               <strong>Subtarea de:</strong> 
-              <a href={`/tasks/${parentTask.id}`} class="underline hover:text-blue-700">
+              <a href={`/tasks/${parentTask.data.id}`} class="underline hover:text-blue-700">
                 {parentTask.data.title}
               </a>
             </p>
@@ -213,8 +215,8 @@ if (priorityField) {
             </h3>
             
             <div class="flex items-center gap-2 mb-3 p-3 bg-gray-50 rounded-lg">
-              <div class="w-6 h-6 rounded" style={`background-color: ${(relatedCategory as any).color}`}></div>
-              <span class="font-medium">{(relatedCategory as any).name}</span>
+              <div class="w-6 h-6 rounded" style={`background-color: ${(relatedCategory.data as any).color}`}></div>
+              <span class="font-medium">{(relatedCategory.data as any).name}</span>
             </div>
 
             <label class="flex items-center gap-2 mb-3">
@@ -227,13 +229,13 @@ if (priorityField) {
               <span class="text-sm text-gray-700 font-medium">✨ Aplicar a TODAS las entradas de esta categoría</span>
             </label>
 
-            {!taskData.applies_to_all && categoryEntries.length > 0 && (
+            {!taskData.applies_to_all && categoryEntries.data.length > 0 && (
               <div id="specificEntriesSection">
                 <label class="block text-sm font-medium text-gray-700 mb-2">
                   Entradas específicas seleccionadas:
                 </label>
                 <div class="max-h-64 overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-200">
-                  {categoryEntries.map((entry: any) => {
+                  {categoryEntries.data.map((entry: any) => {
                     const isSelected = taskData.specific_entry_ids && taskData.specific_entry_ids.includes(entry.id);
                     return (
                       <label class="flex items-center gap-3 p-3 hover:bg-gray-50 cursor-pointer">
@@ -268,7 +270,7 @@ if (priorityField) {
         )}
 
         {/* Subtareas */}
-        {subtasks.length > 0 && (
+        {subtasks && (
           <div class="section-card">
             <div class="flex items-center justify-between mb-3">
               <h3 class="font-semibold text-gray-900 flex items-center gap-2">
@@ -285,8 +287,7 @@ if (priorityField) {
               </a>
             </div>
             <div class="space-y-2">
-              {subtasks.map((subtask: any) => {
-                const subData = JSON.parse(subtask.data);
+              {subtasks && subtasks.map((subtask: any) => {
                 const statusColors = {
                   todo: 'bg-gray-100 text-gray-700',
                   in_progress: 'bg-blue-100 text-blue-700',
@@ -299,11 +300,11 @@ if (priorityField) {
                     class="block p-3 border border-gray-200 rounded-lg hover:border-indigo-300 hover:bg-gray-50"
                   >
                     <div class="flex items-center justify-between">
-                      <span class={subData.status === 'done' ? 'line-through text-gray-500' : ''}>
-                        {subData.title}
+                      <span class={subtask.data.status === 'done' ? 'line-through text-gray-500' : ''}>
+                        {subtask.data.title}
                       </span>
-                      <span class={`px-2 py-0.5 rounded text-xs font-medium ${statusColors[subData.status as keyof typeof statusColors] || 'bg-gray-100 text-gray-600'}`}>
-                        {subData.status}
+                      <span class={`px-2 py-0.5 rounded text-xs font-medium ${statusColors[subtask.data.status as keyof typeof statusColors] || 'bg-gray-100 text-gray-600'}`}>
+                        {subtask.data.status}
                       </span>
                     </div>
                   </a>
@@ -367,7 +368,7 @@ if (priorityField) {
             class="w-full px-3 py-2 border border-gray-300 rounded-lg mb-2"
           >
             <option value="">Ninguna</option>
-            {categories.map((cat: any) => (
+            {categories.data.map((cat: any) => (
               <option value={cat.id} selected={cat.id === taskData.related_category_id}>
                 {cat.name}
               </option>
@@ -505,8 +506,7 @@ if (priorityField) {
     document.getElementById('saveBtn').addEventListener('click', async () => {
       const selectedEntries = Array.from(document.querySelectorAll('.entry-checkbox:checked'))
         .map(cb => cb.value);
-      
-      console.log('Selected Entries:', selectedEntries);
+
 
       const updatedData = {
         title: (document.getElementById('taskTitle')).value,

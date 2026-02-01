@@ -1,7 +1,8 @@
 // src/pages/api/task-completion.ts
 import type { APIRoute } from 'astro';
-import { db } from '../../lib/db';
-import { nanoid } from 'nanoid';
+import { getSupabaseClient } from '@/lib/supabaseClient';
+
+const supabase = getSupabaseClient();
 
 // GET - Obtener estado de tareas para una entrada o categoría
 export const GET: APIRoute = async ({ url }) => {
@@ -18,9 +19,9 @@ export const GET: APIRoute = async ({ url }) => {
       });
     }
     
-    const taskCategory = db.prepare('SELECT id FROM categories WHERE slug = ?').get('task') as { id: string } | undefined;
+    const taskCategory = await supabase.from('categories').select('*').eq('slug', 'task').single();
     
-    if (!taskCategory) {
+    if (!taskCategory.data) {
       return new Response(JSON.stringify({ error: 'Task system not initialized' }), {
         status: 404,
         headers: { 'Content-Type': 'application/json' }
@@ -29,9 +30,9 @@ export const GET: APIRoute = async ({ url }) => {
     
     if (entryId) {
       // Obtener la entrada para saber su categoría
-      const entry = db.prepare('SELECT category_id FROM entries WHERE id = ?').get(entryId) as any;
+      const entry = await supabase.from('entries').select('*').eq('id', entryId).single();
       
-      if (!entry) {
+      if (!entry.data) {
         return new Response(JSON.stringify({ error: 'Entry not found' }), {
           status: 404,
           headers: { 'Content-Type': 'application/json' }
@@ -39,15 +40,12 @@ export const GET: APIRoute = async ({ url }) => {
       }
       
       // Buscar tareas que apliquen a esta entrada
-      const allTasks = db.prepare(`
-        SELECT * FROM entries 
-        WHERE category_id = ? 
-          AND json_extract(data, '$.related_category_id') = ?
-          AND json_extract(data, '$.parent_task_id') IS NULL
-        ORDER BY json_extract(data, '$.order_index') ASC
-      `).all(taskCategory.id, entry.category_id) as any[];
+      const allTasks = await supabase.from('entries').select('*').eq('category_id', taskCategory.data.id)
+        .filter('data->>related_category_id', 'eq', entry.data.category_id)
+        .filter('data->>parent_task_id', 'is', null)
+        .order('data->>order_index', { ascending: true });
       
-      const tasksWithStatus = allTasks.map(task => {
+      const tasksWithStatus = allTasks.data.map(async (task) => {
         const data = JSON.parse(task.data);
         
         // Verificar si aplica a esta entrada específica
@@ -57,20 +55,17 @@ export const GET: APIRoute = async ({ url }) => {
         if (!appliesToEntry) return null;
         
         // Obtener estado de completitud
-        const completion = db.prepare(`
-          SELECT * FROM task_completion 
-          WHERE task_id = ? AND entry_id = ?
-        `).get(task.id, entryId) as any;
-        
+        const completion = await supabase.from('task_completion').select('*').eq('task_id', task.id).eq('entry_id', entryId).single();
+
         // Obtener subtareas
-        const subtasks = getSubtasksWithCompletion(task.id, entryId, taskCategory.id);
+        const subtasks = getSubtasksWithCompletion(task.id, entryId, taskCategory.data.id);
         
         return {
           ...task,
           data,
-          is_completed: completion ? completion.is_completed === 1 : false,
-          completed_at: completion?.completed_at || null,
-          notes: completion?.notes || null,
+          is_completed: completion.data ? completion.data.is_completed === 1 : false,
+          completed_at: completion?.data?.completed_at || null,
+          notes: completion?.data?.notes || null,
           subtasks
         };
       }).filter(Boolean);
@@ -84,30 +79,21 @@ export const GET: APIRoute = async ({ url }) => {
       });
     } else {
       // Listar todas las entradas de la categoría con sus estados de tareas
-      const entries = db.prepare('SELECT id, title FROM entries WHERE category_id = ?').all(categoryId) as any[];
+      const entries = await supabase.from('entries').select('*').eq('category_id', categoryId);
       
-      const entriesWithTaskStatus = entries.map(entry => {
-        const tasks = db.prepare(`
-          SELECT e.id, e.data FROM entries e
-          WHERE e.category_id = ? 
-            AND json_extract(e.data, '$.related_category_id') = ?
-            AND json_extract(e.data, '$.parent_task_id') IS NULL
-        `).all(taskCategory.id, categoryId) as any[];
+      const entriesWithTaskStatus = entries.data.map(async (entry) => {
+        const tasks = await supabase.from('entries').select('*').eq('category_id', taskCategory.data.id)
+          .filter('data->>related_category_id', 'eq', entry.category_id)
+          .filter('data->>parent_task_id', 'is', null);
         
-        const totalTasks = tasks.filter((t: any) => {
+        const totalTasks = tasks.data.filter((t: any) => {
           const data = JSON.parse(t.data);
           return data.applies_to_all || (data.specific_entry_ids && data.specific_entry_ids.includes(entry.id));
         }).length;
         
-        const completedTasks = db.prepare(`
-          SELECT COUNT(*) as count FROM task_completion tc
-          JOIN entries e ON tc.task_id = e.id
-          WHERE tc.entry_id = ? 
-            AND tc.is_completed = 1
-            AND json_extract(e.data, '$.related_category_id') = ?
-        `).get(entry.id, categoryId) as any;
+        const completedTasks = await supabase.from('task_completion').select('*').eq('entry_id', entry.id).eq('is_completed', 1);
         
-        const hasPendingTasks = totalTasks > (completedTasks?.count || 0);
+        const hasPendingTasks = totalTasks > (completedTasks?.data?.length || 0);
         
         return {
           entry_id: entry.id,
@@ -136,19 +122,14 @@ export const GET: APIRoute = async ({ url }) => {
   }
 };
 
-function getSubtasksWithCompletion(parentId: string, entryId: string, taskCategoryId: string): any[] {
-  const subtasks = db.prepare(`
-    SELECT * FROM entries 
-    WHERE category_id = ? AND json_extract(data, '$.parent_task_id') = ?
-    ORDER BY json_extract(data, '$.order_index') ASC
-  `).all(taskCategoryId, parentId) as any[];
+async function getSubtasksWithCompletion(parentId: string, entryId: string, taskCategoryId: string): Promise<any[]> {
+  const subtasks = await supabase.from('entries').select('*').eq('category_id', taskCategoryId)
+    .filter('data->>parent_task_id', 'eq', parentId)
+    .order('data->>order_index', { ascending: true });
   
-  return subtasks.map(task => {
+  return subtasks.data.map(async (task) => {
     const data = JSON.parse(task.data);
-    const completion = db.prepare(`
-      SELECT * FROM task_completion 
-      WHERE task_id = ? AND entry_id = ?
-    `).get(task.id, entryId) as any;
+    const completion = await supabase.from('task_completion').select('*').eq('task_id', task.id).eq('entry_id', entryId).single();
     
     return {
       ...task,
@@ -156,7 +137,7 @@ function getSubtasksWithCompletion(parentId: string, entryId: string, taskCatego
       is_completed: completion ? completion.is_completed === 1 : false,
       completed_at: completion?.completed_at || null,
       notes: completion?.notes || null,
-      subtasks: getSubtasksWithCompletion(task.id, entryId, taskCategoryId)
+      subtasks: await getSubtasksWithCompletion(task.id, entryId, taskCategoryId)
     };
   });
 }
@@ -178,37 +159,26 @@ export const POST: APIRoute = async ({ request }) => {
     const now = new Date().toISOString();
     
     // Verificar si ya existe
-    const existing = db.prepare(`
-      SELECT id FROM task_completion 
-      WHERE task_id = ? AND entry_id = ?
-    `).get(task_id, entry_id);
+    const existing = await supabase.from('task_completion').select('*').eq('task_id', task_id).eq('entry_id', entry_id).single();
     
-    if (existing) {
+    if (existing.data) {
       // Actualizar
-      db.prepare(`
-        UPDATE task_completion 
-        SET is_completed = ?, completed_at = ?, notes = ?
-        WHERE task_id = ? AND entry_id = ?
-      `).run(
-        is_completed ? 1 : 0,
-        is_completed ? now : null,
-        notes || null,
-        task_id,
-        entry_id
-      );
+      await supabase.from('task_completion').update({
+        is_completed: is_completed ? 1 : 0,
+        completed_at: is_completed ? now : null,
+        notes: notes || null,
+      }).eq('task_id', task_id).eq('entry_id', entry_id); 
+      
     } else {
-      // Insertar
-      db.prepare(`
-        INSERT INTO task_completion (id, task_id, entry_id, is_completed, completed_at, notes)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).run(
-        nanoid(),
+
+      await supabase.from('task_completion').insert({
         task_id,
         entry_id,
-        is_completed ? 1 : 0,
-        is_completed ? now : null,
-        notes || null
-      );
+        is_completed: is_completed ? 1 : 0,
+        completed_at: is_completed ? now : null,
+        notes: notes || null,
+      });
+      
     }
     
     return new Response(JSON.stringify({ success: true }), {

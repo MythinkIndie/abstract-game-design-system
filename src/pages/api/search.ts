@@ -1,5 +1,7 @@
 import type { APIRoute } from 'astro';
-import { db } from '@/lib/db';
+import { getSupabaseClient } from '@/lib/supabaseClient';
+
+const supabase = getSupabaseClient();
 
 export const GET: APIRoute = async ({ url }) => {
   try {
@@ -15,37 +17,25 @@ export const GET: APIRoute = async ({ url }) => {
     
     // BUSCAR CATEGORÍAS
     if (type === 'all' || type === 'categories') {
-      let categoryQuery = `
-        SELECT * FROM categories 
-        WHERE (name LIKE ? OR description LIKE ? OR slug LIKE ?)
-      `;
-      const categoryParams = [`%${query}%`, `%${query}%`, `%${query}%`];
       
-      results.categories = db!.prepare(categoryQuery).all(...categoryParams);
+      results.categories = await supabase.from('categories').select('*').or(`
+        name.ilike.${query},
+        description.ilike.${query},
+        slug.ilike.${query}
+      `).order('name', { ascending: true });
+    
     }
     
     // BUSCAR ENTRADAS
     if (type === 'all' || type === 'entries') {
-      let entryQuery = `
-        SELECT e.*, c.name as category_name, c.slug as category_slug, c.color as category_color
-        FROM entries e
-        JOIN categories c ON e.category_id = c.id
-        WHERE (e.title LIKE ? OR e.data LIKE ?)
-      `;
-      const entryParams: any[] = [`%${query}%`, `%${query}%`];
       
-      // Filtrar por categoría específica
-      if (categoryId) {
-        entryQuery += ' AND e.category_id = ?';
-        entryParams.push(categoryId);
-      }
-      
-      entryQuery += ' ORDER BY e.updated_at DESC LIMIT 50';
-      
-      const entries = db!.prepare(entryQuery).all(...entryParams) as any[];
+      const entries = await supabase.from('entries').select('*').or(`
+        title.ilike.${query},
+        data.ilike.${query}
+      `).order('updated_at', { ascending: false });
       
       // Filtrar por etiquetas si se especifican
-      results.entries = entries.filter((entry: any) => {
+      results.entries = entries.data.filter((entry: any) => {
         if (tags.length === 0) return true;
         
         try {

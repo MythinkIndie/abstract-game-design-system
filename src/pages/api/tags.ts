@@ -1,7 +1,8 @@
 // src/pages/api/tags.ts
 import type { APIRoute } from 'astro';
-import { db } from '../../lib/db';
-import { nanoid } from 'nanoid';
+import { getSupabaseClient } from '@/lib/supabaseClient';
+
+const supabase = getSupabaseClient();
 
 // GET - Listar todas las etiquetas o buscar
 export const GET: APIRoute = async ({ url }) => {
@@ -11,32 +12,17 @@ export const GET: APIRoute = async ({ url }) => {
     
     if (entryId) {
       // Obtener etiquetas de una entrada específica
-      const tags = db.prepare(`
-        SELECT t.* FROM tags t
-        JOIN entry_tags et ON t.id = et.tag_id
-        WHERE et.entry_id = ?
-        ORDER BY t.name
-      `).all(entryId);
+      const tags = await supabase.from('tags').select('tags.*').eq('entry_tags.entry_id', entryId).order('name', { ascending: true });
       
-      return new Response(JSON.stringify(tags), {
+      return new Response(JSON.stringify(tags.data), {
         status: 200,
         headers: { 'Content-Type': 'application/json' }
       });
     }
     
-    let query = 'SELECT * FROM tags';
-    const params: any[] = [];
+    const tags = await supabase.from('tags').select('*').order('usage_count', { ascending: false });
     
-    if (search) {
-      query += ' WHERE name LIKE ?';
-      params.push(`%${search}%`);
-    }
-    
-    query += ' ORDER BY usage_count DESC, name ASC';
-    
-    const tags = db.prepare(query).all(...params);
-    
-    return new Response(JSON.stringify(tags), {
+    return new Response(JSON.stringify(tags.data), {
       status: 200,
       headers: { 'Content-Type': 'application/json' }
       });
@@ -67,39 +53,36 @@ export const POST: APIRoute = async ({ request }) => {
     const normalizedName = name.trim().toLowerCase();
     
     // Buscar o crear etiqueta
-    let tag = db.prepare('SELECT * FROM tags WHERE name = ?').get(normalizedName) as any;
+    let tag = await supabase.from('tags').select('*').eq('name', normalizedName).single();
     
-    if (!tag) {
-      const tagId = nanoid();
+    if (!tag.data) {
       const tagColor = color || generateRandomColor();
       
-      db.prepare(`
-        INSERT INTO tags (id, name, color, usage_count, created_at)
-        VALUES (?, ?, ?, 0, ?)
-      `).run(tagId, normalizedName, tagColor, new Date().toISOString());
+      await supabase.from('tags').insert({
+        name: normalizedName,
+        color: tagColor,
+        usage_count: 0,
+        created_at: new Date().toISOString()
+      });
       
-      tag = db.prepare('SELECT * FROM tags WHERE id = ?').get(tagId);
+      tag = await supabase.from('tags').select('*').eq('name', normalizedName).single();
     }
     
     // Si se proporciona entry_id, asignar etiqueta a entrada
-    if (entry_id && tag) {
-      const existing = db.prepare(`
-        SELECT id FROM entry_tags 
-        WHERE entry_id = ? AND tag_id = ?
-      `).get(entry_id, tag.id);
+    if (entry_id && tag.data) {
+      const existing = await supabase.from('entry_tags').select('id').eq('entry_id', entry_id).eq('tag_id', tag.data.id).single();
       
-      if (!existing) {
-        db.prepare(`
-          INSERT INTO entry_tags (id, entry_id, tag_id)
-          VALUES (?, ?, ?)
-        `).run(nanoid(), entry_id, tag.id);
+      if (!existing.data) {
+
+        await supabase.from('entry_tags').insert({
+          entry_id,
+          tag_id: tag.data.id
+        });
         
-        // Incrementar contador de uso
-        db.prepare(`
-          UPDATE tags 
-          SET usage_count = usage_count + 1 
-          WHERE id = ?
-        `).run(tag.id);
+        await supabase.from('tags').update({
+          usage_count: tag.data.usage_count + 1
+        }).eq('id', tag.data.id);
+      
       }
     }
     
@@ -131,20 +114,16 @@ export const DELETE: APIRoute = async ({ request }) => {
     
     if (delete_completely) {
       // Eliminar etiqueta completamente
-      db.prepare('DELETE FROM tags WHERE id = ?').run(tag_id);
+      await supabase.from('tags').delete().eq('id', tag_id);
+
     } else if (entry_id) {
-      // Eliminar solo la relación con la entrada
-      db.prepare(`
-        DELETE FROM entry_tags 
-        WHERE entry_id = ? AND tag_id = ?
-      `).run(entry_id, tag_id);
-      
-      // Decrementar contador
-      db.prepare(`
-        UPDATE tags 
-        SET usage_count = usage_count - 1 
-        WHERE id = ?
-      `).run(tag_id);
+
+      await supabase.from('entry_tags').delete().eq('entry_id', entry_id).eq('tag_id', tag_id);
+
+      await supabase.from('tags').update({
+        usage_count: supabase.gte('usage_count', 1)
+      }).eq('id', tag_id);
+
     }
     
     return new Response(JSON.stringify({ success: true }), {

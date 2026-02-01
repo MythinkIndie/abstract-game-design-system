@@ -1,56 +1,44 @@
 // src/pages/api/tasks.ts
 import type { APIRoute } from 'astro';
-import { db } from '@/lib/db';
-import { nanoid } from 'nanoid';
+import { getSupabaseClient } from '@/lib/supabaseClient';
 
+const supabase = getSupabaseClient();
 // GET - Listar tareas con jerarquía
 export const GET: APIRoute = async ({ url }) => {
   try {
     const categoryId = url.searchParams.get('category_id');
     const parentId = url.searchParams.get('parent_id');
     
-    const taskCategory = db!.prepare('SELECT id FROM categories WHERE slug = ?').get('task') as { id: string } | undefined;
+    const taskCategory = await supabase.from('categories').select('id').eq('slug', 'task').single();
     
-    if (!taskCategory) {
+    if (!taskCategory.data) {
       return new Response(JSON.stringify({ error: 'Task system not initialized' }), {
         status: 404,
         headers: { 'Content-Type': 'application/json' }
       });
     }
-    
-    let query = 'SELECT * FROM entries WHERE category_id = ?';
-    const params: any[] = [taskCategory.id];
-    
-    // Filtrar por categoría relacionada
-    if (categoryId) {
-      query += ` AND json_extract(data, '$.related_category_id') = ?`;
-      params.push(categoryId);
-    }
-    
-    // Filtrar por tarea padre
-    if (parentId !== undefined) {
-      if (parentId === 'null' || parentId === '') {
-        query += ` AND (json_extract(data, '$.parent_task_id') IS NULL OR json_extract(data, '$.parent_task_id') = '')`;
-      } else {
-        query += ` AND json_extract(data, '$.parent_task_id') = ?`;
-        params.push(parentId);
-      }
-    }
-    
-    query += ' ORDER BY json_extract(data, \'$.order_index\') ASC, created_at ASC';
-    
-    const tasks = db!.prepare(query).all(...params) as any[];
-    const statuses = db!.prepare('SELECT * FROM task_statuses ORDER BY order_index').all();
-    
-    const parsedTasks = tasks.map(task => {
+
+    const tasks = await supabase
+      .from('entries')
+      .select('*')
+      .eq('category_id', taskCategory.data.id);
+
+    const filteredTasks = parentId ? tasks.data.filter(task => {
+      const data = JSON.parse(task.data);
+      return data.parent_task_id === parentId;
+    }) : tasks.data;
+
+    const statuses = await supabase.from('task_statuses').select('*').order('order_index', { ascending: true });
+
+    const parsedTasks = await Promise.all(filteredTasks.map(async task => {
       const data = JSON.parse(task.data);
 
-      let statusData = statuses.find(status => (status as any).id === data.status);
-      statusData = typeof statusData === 'undefined' ? statuses[0] : statusData;
+      let statusData = statuses.data.find(status => (status as any).id === data.status);
+      statusData = typeof statusData === 'undefined' ? statuses.data[0] : statusData;
       
       // Si incluir subtareas, buscarlas recursivamente
       let subtasks: any[] = [];
-      subtasks = getSubtasks(task.id, taskCategory.id);
+      subtasks = await getSubtasks(task.id, taskCategory.data.id);
 
       return {
         ...task,
@@ -58,7 +46,7 @@ export const GET: APIRoute = async ({ url }) => {
         statusData,
         subtasks
       };
-    });
+    }));
     
     return new Response(JSON.stringify(parsedTasks), {
       status: 200,
@@ -75,14 +63,13 @@ export const GET: APIRoute = async ({ url }) => {
 };
 
 // Función recursiva para obtener subtareas
-function getSubtasks(parentId: string, taskCategoryId: string): any[] {
-  const subtasks = db!.prepare(`
-    SELECT * FROM entries 
-    WHERE category_id = ? AND json_extract(data, '$.parent_task_id') = ?
-    ORDER BY json_extract(data, '$.order_index') ASC, created_at ASC
-  `).all(taskCategoryId, parentId) as any[];
+async function getSubtasks(parentId: string, taskCategoryId: string): Promise<any[]> {
+
+  const subtasks = await supabase.from('entries').select('*').eq('category_id', taskCategoryId).eq('data->>parent_task_id', parentId).order('data->>order_index', { ascending: true }).order('created_at', { ascending: true });
   
-  return subtasks.map(task => {
+  if (subtasks.data.length === 0) return [];
+  
+  return subtasks.data.map(task => {
     const data = JSON.parse(task.data);
     return {
       ...task,
@@ -117,20 +104,17 @@ export const POST: APIRoute = async ({ request }) => {
       });
     }
 
-    const initialStatus = db!.prepare('SELECT * FROM task_statuses WHERE name = ?').get('Sin empezar') as any;
+    const initialStatus = await supabase.from('task_statuses').select('*').eq('name', 'Sin empezar').single();
     
-    const taskCategory = db!.prepare('SELECT id FROM categories WHERE slug = ?').get('task') as { id: string } | undefined;
+    const taskCategory = await supabase.from('categories').select('id').eq('slug', 'task').single();
     
-    if (!taskCategory) {
+    if (!taskCategory.data) {
       return new Response(JSON.stringify({ error: 'Task system not initialized' }), {
         status: 404,
         headers: { 'Content-Type': 'application/json' }
       });
     }
-    
-    const id = nanoid();
-    const now = new Date().toISOString();
-    
+
     const taskData = {
       title,
       description,
@@ -141,25 +125,19 @@ export const POST: APIRoute = async ({ request }) => {
       specific_entry_ids: Array.isArray(specific_entry_ids) ? specific_entry_ids : [],
       priority,
       due_date,
-      statusData: initialStatus,
+      statusData: initialStatus.data,
       tags: Array.isArray(tags) ? tags : [],
       order_index,
       assigned_to
     };
+
+    await supabase.from('entries').insert({
+      category_id: taskCategory.data.id,
+      title: title,
+      data: JSON.stringify(taskData)
+    });
     
-    db!.prepare(`
-      INSERT INTO entries (id, category_id, title, data, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(
-      id,
-      taskCategory.id,
-      title,
-      JSON.stringify(taskData),
-      now,
-      now
-    );
-    
-    const newTask = db!.prepare('SELECT * FROM entries WHERE id = ?').get(id) as any;
+    const newTask = await supabase.from('entries').select('*').eq('data->>title', title).single();
     
     return new Response(JSON.stringify({
       ...newTask,
@@ -191,34 +169,28 @@ export const PUT: APIRoute = async ({ request }) => {
       });
     }
     
-    const existingTask = db!.prepare('SELECT * FROM entries WHERE id = ?').get(id) as any;
+    const existingTask = await supabase.from('entries').select('*').eq('id', id).single();
     
-    if (!existingTask) {
+    if (!existingTask.data) {
       return new Response(JSON.stringify({ error: 'Task not found' }), {
         status: 404,
         headers: { 'Content-Type': 'application/json' }
       });
     }
     
-    const currentData = JSON.parse(existingTask.data);
+    const currentData = JSON.parse(existingTask.data.data);
     const updatedData = { ...currentData, ...updates };
-    const now = new Date().toISOString();
     
-    db!.prepare(`
-      UPDATE entries 
-      SET data = ?, updated_at = ?
-      WHERE id = ?
-    `).run(
-      JSON.stringify(updatedData),
-      now,
-      id
-    );
     
-    const updatedTask = db!.prepare('SELECT * FROM entries WHERE id = ?').get(id) as any;
+    await supabase.from('entries').update({
+      data: JSON.stringify(updatedData)
+    }).eq('id', id);
+    
+    const updatedTask = await supabase.from('entries').select('*').eq('id', id).single();
     
     return new Response(JSON.stringify({
-      ...updatedTask,
-      data: JSON.parse(updatedTask.data)
+      ...updatedTask.data,
+      data: JSON.parse(updatedTask.data.data)
     }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' }
@@ -246,7 +218,7 @@ export const DELETE: APIRoute = async ({ request }) => {
     }
     
     // Eliminar subtareas recursivamente
-    deleteTaskAndSubtasks(id);
+    await deleteTaskAndSubtasks(id);
     
     return new Response(JSON.stringify({ success: true }), {
       status: 200,
@@ -262,22 +234,19 @@ export const DELETE: APIRoute = async ({ request }) => {
   }
 };
 
-function deleteTaskAndSubtasks(taskId: string) {
-  const taskCategory = db!.prepare('SELECT id FROM categories WHERE slug = ?').get('task') as { id: string } | undefined;
+async function deleteTaskAndSubtasks(taskId: string) {
+  const taskCategory = await supabase.from('categories').select('id').eq('slug', 'task').single();
   
-  if (!taskCategory) return;
+  if (!taskCategory.data) return;
   
   // Buscar subtareas
-  const subtasks = db!.prepare(`
-    SELECT id FROM entries 
-    WHERE category_id = ? AND json_extract(data, '$.parent_task_id') = ?
-  `).all(taskCategory.id, taskId) as any[];
+  const subtasks = await supabase.from('entries').select('id').eq('category_id', taskCategory.data.id).eq('data->>parent_task_id', taskId);
   
   // Eliminar subtareas recursivamente
   for (const subtask of subtasks) {
-    deleteTaskAndSubtasks(subtask.id);
+    await deleteTaskAndSubtasks(subtask.id);
   }
   
   // Eliminar la tarea
-  db!.prepare('DELETE FROM entries WHERE id = ?').run(taskId);
+  await supabase.from('entries').delete().eq('id', taskId);
 }

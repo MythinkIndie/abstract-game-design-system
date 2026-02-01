@@ -129,7 +129,7 @@ console.log(entriesWithTaskStatus);
                 
                 {(data as any).entity_description && (
                   <p class="text-sm text-gray-600 line-clamp-3 mb-4">
-                    {(data as any).description.replace(/#/g, '').substring(0, 150)}...
+                    {(data as any)?.entity_description ? (data as any).entity_description.replace(/#/g, '').substring(0, 150) : '...'}
                   </p>
                 )}
                 

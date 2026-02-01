@@ -1,14 +1,13 @@
 // src/pages/api/categories.ts
 import type { APIRoute } from 'astro';
 import { getSupabaseClient } from '@/lib/supabaseClient';
-import { nanoid } from 'nanoid';
 
 const supabase = getSupabaseClient();
 // GET - Listar todas las categorías
 export const GET: APIRoute = async ({ url }) => {
   try {
     
-    const categories = await supabase.from('categories').select('*').orderBy("created_at");
+    const categories = await supabase.from('categories').select('*').eq('is_system', 0).order('name', { ascending: true });
     
     return new Response(JSON.stringify(categories.data), {
       status: 200,

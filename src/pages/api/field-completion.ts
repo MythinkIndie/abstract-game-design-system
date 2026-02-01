@@ -1,7 +1,8 @@
 // src/pages/api/field-completion.ts
 import type { APIRoute } from 'astro';
-import { db } from '@/lib/db';
-import { nanoid } from 'nanoid';
+import { getSupabaseClient } from '@/lib/supabaseClient';
+
+const supabase = getSupabaseClient();
 
 // GET - Obtener estado de completitud de campos de una entrada
 export const GET: APIRoute = async ({ url }) => {
@@ -18,9 +19,9 @@ export const GET: APIRoute = async ({ url }) => {
     }
     
     // Obtener la entrada
-    const entry = db.prepare('SELECT * FROM entries WHERE id = ?').get(entryId) as any;
+    const entry = await supabase.from('entries').select('*').eq('id', entryId).single();
     
-    if (!entry) {
+    if (!entry.data) {
       return new Response(JSON.stringify({ error: 'Entry not found' }), {
         status: 404,
         headers: { 'Content-Type': 'application/json' }
@@ -28,27 +29,23 @@ export const GET: APIRoute = async ({ url }) => {
     }
     
     // Obtener todos los campos de la categoría
-    const fields = db.prepare('SELECT * FROM fields WHERE category_id = ?').all(entry.category_id);
+    const fields = await supabase.from('fields').select('*').eq('category_id', entry.data.category_id);
     
     // Obtener estado de completitud
-    const completionStates = db.prepare(`
-      SELECT field_id, is_complete, completion_notes 
-      FROM field_completion 
-      WHERE entry_id = ?
-    `).all(entryId);
+    const completionStates = await supabase.from('field_completion').select('*').eq('entry_id', entryId);
     
     const completionMap = new Map(
-      (completionStates as any[]).map(c => [c.field_id, {
+      (completionStates.data as any[]).map(c => [c.field_id, {
         is_complete: c.is_complete === 1,
         completion_notes: c.completion_notes
       }])
     );
     
     // Parsear data de la entrada
-    const entryData = JSON.parse(entry.data);
+    const entryData = JSON.parse(entry.data.data);
     
     // Calcular estado de cada campo
-    const fieldStatus = (fields as any[]).map(field => {
+    const fieldStatus = (fields.data as any[]).map(field => {
       const hasValue = entryData[field.name] !== undefined && entryData[field.name] !== null && entryData[field.name] !== '';
       const manualCompletion = completionMap.get(field.id);
       
@@ -104,37 +101,23 @@ export const POST: APIRoute = async ({ request }) => {
     const now = new Date().toISOString();
     
     // Verificar si ya existe
-    const existing = db.prepare(`
-      SELECT id FROM field_completion 
-      WHERE entry_id = ? AND field_id = ?
-    `).get(entry_id, field_id);
+    const existing = await supabase.from('field_completion').select('*').eq('entry_id', entry_id).eq('field_id', field_id).single();
     
-    if (existing) {
+    if (existing.data) {
       // Actualizar
-      db.prepare(`
-        UPDATE field_completion 
-        SET is_complete = ?, completion_notes = ?, updated_at = ?
-        WHERE entry_id = ? AND field_id = ?
-      `).run(
-        is_complete ? 1 : 0,
-        completion_notes || null,
-        now,
-        entry_id,
-        field_id
-      );
+      await supabase.from('field_completion').update({
+        is_complete: is_complete ? 1 : 0,
+        completion_notes: completion_notes || null,
+      }).eq('entry_id', entry_id).eq('field_id', field_id);
+
     } else {
       // Insertar
-      db.prepare(`
-        INSERT INTO field_completion (id, entry_id, field_id, is_complete, completion_notes, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).run(
-        nanoid(),
+      await supabase.from('field_completion').insert({
         entry_id,
         field_id,
-        is_complete ? 1 : 0,
-        completion_notes || null,
-        now
-      );
+        is_complete: is_complete ? 1 : 0,
+        completion_notes: completion_notes || null,
+      });
     }
     
     return new Response(JSON.stringify({ success: true }), {
@@ -170,35 +153,24 @@ export const PUT: APIRoute = async ({ request }) => {
     for (const update of field_updates) {
       const { field_id, is_complete, completion_notes } = update;
       
-      const existing = db.prepare(`
-        SELECT id FROM field_completion 
-        WHERE entry_id = ? AND field_id = ?
-      `).get(entry_id, field_id);
-      
-      if (existing) {
-        db.prepare(`
-          UPDATE field_completion 
-          SET is_complete = ?, completion_notes = ?, updated_at = ?
-          WHERE entry_id = ? AND field_id = ?
-        `).run(
-          is_complete ? 1 : 0,
-          completion_notes || null,
-          now,
-          entry_id,
-          field_id
-        );
+      const existing = await supabase.from('field_completion').select('*').eq('entry_id', entry_id).eq('field_id', field_id).single();
+
+      if (existing.data) {
+
+        await supabase.from('field_completion').update({
+          is_complete: is_complete ? 1 : 0,
+          completion_notes: completion_notes || null,
+        }).eq('entry_id', entry_id).eq('field_id', field_id);
+
       } else {
-        db.prepare(`
-          INSERT INTO field_completion (id, entry_id, field_id, is_complete, completion_notes, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?)
-        `).run(
-          nanoid(),
+
+        await supabase.from('field_completion').insert({
           entry_id,
           field_id,
-          is_complete ? 1 : 0,
-          completion_notes || null,
-          now
-        );
+          is_complete: is_complete ? 1 : 0,
+          completion_notes: completion_notes || null,
+        });
+
       }
     }
     

@@ -1,7 +1,9 @@
 ---
 // src/pages/tasks/create.astro
-import { db } from '@/lib/db';
 
+import { getSupabaseClient } from '@/lib/supabaseClient';
+
+const supabase = getSupabaseClient();
 const url = new URL(Astro.request.url);
 const parentTaskId = url.searchParams.get('parent_id');
 const relatedCategoryId = url.searchParams.get('category_id');
@@ -9,22 +11,22 @@ const relatedEntryId = url.searchParams.get('entry_id');
 
 let parentTask = null;
 if (parentTaskId) {
-  parentTask = db!.prepare('SELECT * FROM entries WHERE id = ?').get(parentTaskId) as any;
-  if (parentTask) {
-    parentTask.data = JSON.parse(parentTask.data);
+  parentTask = await supabase.from('entries').select('*').eq('id', parentTaskId).single();
+  if (parentTask.data) {
+    parentTask.data.data = JSON.parse(parentTask.data.data);
   }
 }
 
-const categories = db!.prepare('SELECT id, name, slug FROM categories WHERE is_system = 0 ORDER BY name').all();
+const categories = await supabase.from('categories').select('id, name, slug').eq('is_system', 0).order('name');
 
 // Si hay entrada específica, pre-seleccionarla
 let preSelectedEntry = null;
 let categoryEntries: any[] = [];
 if (relatedEntryId && relatedCategoryId) {
-  preSelectedEntry = db!.prepare('SELECT id, title FROM entries WHERE id = ?').get(relatedEntryId);
-  categoryEntries = db!.prepare('SELECT id, title FROM entries WHERE category_id = ? ORDER BY title').all(relatedCategoryId);
+  preSelectedEntry = await supabase.from('entries').select('id, title').eq('id', relatedEntryId).single();
+  categoryEntries = (await supabase.from('entries').select('id, title').eq('category_id', relatedCategoryId).order('title')).data;
 } else if (relatedCategoryId) {
-  categoryEntries = db!.prepare('SELECT id, title FROM entries WHERE category_id = ? ORDER BY title').all(relatedCategoryId);
+  categoryEntries = (await supabase.from('entries').select('id, title').eq('category_id', relatedCategoryId).order('title')).data;
 }
 ---
 
@@ -33,14 +35,14 @@ if (relatedEntryId && relatedCategoryId) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{parentTask ? 'Nueva Subtarea' : 'Nueva Tarea'}</title>
+  <title>{parentTask?.data ? 'Nueva Subtarea' : 'Nueva Tarea'}</title>
 </head>
 <body class="bg-gray-50 min-h-screen">
   <header class="bg-white shadow-sm border-b border-gray-200">
     <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
       <a href="/tasks" class="text-sm text-gray-500 hover:text-gray-700">← Volver a tareas</a>
       <h1 class="text-2xl font-bold text-gray-900 mt-1">
-        {parentTask ? `Nueva Subtarea de: ${parentTask.data.title}` : 'Nueva Tarea'}
+        {parentTask?.data ? `Nueva Subtarea de: ${parentTask.data.title}` : 'Nueva Tarea'}
       </h1>
     </div>
   </header>
@@ -130,7 +132,7 @@ if (relatedEntryId && relatedCategoryId) {
           class="w-full px-4 py-2 border border-gray-300 rounded-lg"
         >
           <option value="">Selecciona una categoría...</option>
-          {categories.map((cat: any) => (
+          {categories.data.map((cat: any) => (
             <option value={cat.id} selected={cat.id === relatedCategoryId}>
               {cat.name}
             </option>
@@ -143,10 +145,10 @@ if (relatedEntryId && relatedCategoryId) {
 
       <!-- Aplicar a todas o específicas -->
       <div class="border border-gray-200 rounded-lg p-4">
-        {preSelectedEntry ? (
+        {preSelectedEntry?.data ? (
           <div class="mb-3 p-3 bg-blue-50 border border-blue-200 rounded">
             <p class="text-sm text-blue-900">
-              <strong>Tarea vinculada a:</strong> {(preSelectedEntry as any).title}
+              <strong>Tarea vinculada a:</strong> {preSelectedEntry.data.title}
             </p>
             <input type="hidden" id="preselected_entry" value={relatedEntryId} />
           </div>

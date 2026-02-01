@@ -1,7 +1,9 @@
 ---
-import { db } from '@/lib/db';
+import { getSupabaseClient } from "@/lib/supabaseClient";
 
-const statuses = db!.prepare('SELECT * FROM task_statuses ORDER BY order_index').all();
+const supabase = getSupabaseClient();
+
+const statuses = await supabase.from('task_statuses').select('*').order('order_index');
 ---
 
 <!DOCTYPE html>
@@ -55,7 +57,7 @@ const statuses = db!.prepare('SELECT * FROM task_statuses ORDER BY order_index')
         <h2 class="text-lg font-semibold text-gray-900">Estados Actuales</h2>
       </div>
       <div id="statusList" class="divide-y divide-gray-200">
-        {statuses.map((status: any) => (
+        {statuses.data && statuses.data.map((status: any) => (
           <div class="p-4 flex items-center gap-4 hover:bg-gray-50">
             <div class="flex-shrink-0">
               <div 

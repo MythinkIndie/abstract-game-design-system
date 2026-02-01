@@ -70,6 +70,7 @@ export const POST: APIRoute = async ({ request }) => {
       category_id: category_id,
       title: title,
       data: typeof data === 'string' ? data : JSON.stringify(data),
+      status_id: '0cf19e7e-1614-486c-96a4-cd1cb2ea316f'
     });
 
     const newEntryRecord = await supabase.from('entries').select('id').order('created_at', { ascending: false }).limit(1).single();
@@ -105,7 +106,8 @@ export const PUT: APIRoute = async ({ request }) => {
 
     await supabase.from('entries').update({
       ...(title !== undefined && { title }),
-      ...(data !== undefined && { data: typeof data === 'string' ? data : JSON.stringify(data) })
+      ...(data !== undefined && { data: typeof data === 'string' ? data : JSON.stringify(data) }),
+      ...(data !== undefined && {status_id: data.status })
     }).eq('id', id);
     
     const updatedEntry = await supabase.from('entries').select('*').eq('id', id).single();

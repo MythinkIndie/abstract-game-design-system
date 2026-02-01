@@ -416,7 +416,7 @@ const entryCount = await supabase
         if (select) {
           select.innerHTML = '<option value="">Selecciona una categoría...</option>';
           
-          categories.forEach((cat: any) => {
+          categories?.forEach((cat: any) => {
             // Permitir todas las categorías, incluida la actual
             const option = document.createElement('option');
             option.value = cat.id;
