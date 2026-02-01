@@ -1,7 +1,7 @@
 import type { APIRoute } from 'astro';
 import fs from 'fs';
 import path from 'path';
-import { nanoid } from 'nanoid';
+import crypto from 'crypto';
 
 export const POST: APIRoute = async ({ request }) => {
   try {
@@ -38,7 +38,7 @@ export const POST: APIRoute = async ({ request }) => {
     
     // Generar nombre único
     const ext = path.extname(file.name);
-    const filename = `${nanoid()}${ext}`;
+    const filename = `${crypto.randomUUID()}${ext}`;
     const uploadsDir = path.join(process.cwd(), 'public', 'uploads', 'entries');
     
     // Crear directorio si no existe

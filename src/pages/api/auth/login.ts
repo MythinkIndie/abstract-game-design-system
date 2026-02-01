@@ -1,6 +1,5 @@
 import type { APIRoute } from 'astro';
 import { getServiceClient } from '@/lib/supabaseClient';
-import { nanoid } from 'nanoid';
 import crypto from 'crypto';
 
 const supabase = getServiceClient();
@@ -45,8 +44,8 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     }
     
     // Crear sesión
-    const token = nanoid(32);
     const now = new Date().toISOString();
+    const token = crypto.randomBytes(32).toString('hex');
 
     await supabase.from('sessions').insert({
       token,
@@ -105,7 +104,7 @@ export const GET: APIRoute = async ({ cookies }) => {
     // Registrar actividad
     if (username) {
       await supabase.from('activity_logs').insert({
-        id: nanoid(),
+        id: crypto.randomUUID(),
         username,
         action: 'logout',
         details: 'Usuario cerró sesión',
