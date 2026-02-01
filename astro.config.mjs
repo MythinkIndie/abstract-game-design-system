@@ -8,5 +8,5 @@ export default defineConfig({
   integrations: [tailwind()],
   output: "server",
   adapter: vercel(),
-  site: "https://abstract-game-design-system.vercel.app/",
+  site: "https://abstract-game-design-system.vercel.app/"
 });
