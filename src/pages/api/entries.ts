@@ -104,11 +104,15 @@ export const PUT: APIRoute = async ({ request }) => {
       });
     }
 
-    await supabase.from('entries').update({
+    const statusIsIdentifier = data?.status.length === 36 && /^[0-9a-fA-F-]+$/.test(data.status);
+
+    const { error } = await supabase.from('entries').update({
       ...(title !== undefined && { title }),
       ...(data !== undefined && { data: typeof data === 'string' ? data : JSON.stringify(data) }),
-      ...(data !== undefined && {status_id: data.status })
+      ...(data !== undefined && {status_id: statusIsIdentifier ? data.status : null })
     }).eq('id', id);
+
+    console.log(error)
     
     const updatedEntry = await supabase.from('entries').select('*').eq('id', id).single();
     

@@ -115,6 +115,7 @@ document.querySelectorAll('.add-list-item-relation').forEach(btn => {
         alert("You can't relation again the same item");
         return;
       }
+      console.log(currentData)
       if (multiple === 'true') {
         currentData[fieldName].push(input.value.trim());
       } else {
