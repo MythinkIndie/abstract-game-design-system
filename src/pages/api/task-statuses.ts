@@ -1,13 +1,14 @@
+import { getSupabaseClient } from '@/lib/supabaseClient';
 import type { APIRoute } from 'astro';
-import { db } from '@/lib/db';
-import { nanoid } from 'nanoid';
+
+const supabase = getSupabaseClient();
 
 // GET - Listar estados
 export const GET: APIRoute = async () => {
   try {
-    const statuses = db.prepare('SELECT * FROM task_statuses ORDER BY order_index').all();
+    const statuses = await supabase.from('task_statuses').select('*').order('order_index', { ascending: true });
     
-    return new Response(JSON.stringify(statuses), {
+    return new Response(JSON.stringify(statuses.data), {
       status: 200,
       headers: { 'Content-Type': 'application/json' }
     });
@@ -34,20 +35,25 @@ export const POST: APIRoute = async ({ request }) => {
     }
     
     const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '_');
-    const id = nanoid();
     
     // Obtener el orden más alto
-    const maxOrder = db.prepare('SELECT MAX(order_index) as max FROM task_statuses').get() as any;
-    const orderIndex = (maxOrder?.max || 0) + 1;
+    const maxOrder = await supabase.from('task_statuses').select('MAX(order_index) as max').single();
+    const orderIndex = (maxOrder?.data?.max || 0) + 1;
+
+    await supabase.from('task_statuses').insert([{
+      name,
+      slug,
+      color: color || '#6b7280',
+      icon: icon || '📌',
+      order_index: orderIndex,
+      is_default: false,
+      is_final: false,
+      created_at: new Date().toISOString()
+    }]);
     
-    db.prepare(`
-      INSERT INTO task_statuses (id, name, slug, color, icon, order_index, is_default, is_final, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?)
-    `).run(id, name, slug, color || '#6b7280', icon || '📌', orderIndex, new Date().toISOString());
+    const newStatus = await supabase.from('task_statuses').select('*').eq('order_index', orderIndex).single();
     
-    const newStatus = db.prepare('SELECT * FROM task_statuses WHERE id = ?').get(id);
-    
-    return new Response(JSON.stringify(newStatus), {
+    return new Response(JSON.stringify(newStatus.data), {
       status: 201,
       headers: { 'Content-Type': 'application/json' }
     });
@@ -96,12 +102,15 @@ export const PUT: APIRoute = async ({ request }) => {
     }
     
     values.push(id);
+
+    await supabase 
+      .from('task_statuses')
+      .update(Object.fromEntries(updates.map((u, i) => [u.split(' = ')[0], values[i]])))
+      .eq('id', id);
     
-    db.prepare(`UPDATE task_statuses SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+    const updated = await supabase.from('task_statuses').select('*').eq('id', id).single();
     
-    const updated = db.prepare('SELECT * FROM task_statuses WHERE id = ?').get(id);
-    
-    return new Response(JSON.stringify(updated), {
+    return new Response(JSON.stringify(updated.data), {
       status: 200,
       headers: { 'Content-Type': 'application/json' }
     });
@@ -121,9 +130,9 @@ export const DELETE: APIRoute = async ({ request }) => {
     const { id } = await request.json();
     
     // No permitir eliminar estados por defecto
-    const status = db.prepare('SELECT is_default FROM task_statuses WHERE id = ?').get(id) as any;
+    const status = await supabase.from('task_statuses').select('is_default').eq('id', id).single();
     
-    if (status?.is_default) {
+    if (status?.data?.is_default) {
       return new Response(JSON.stringify({ 
         error: 'No se pueden eliminar estados por defecto' 
       }), {
@@ -132,7 +141,7 @@ export const DELETE: APIRoute = async ({ request }) => {
       });
     }
     
-    db.prepare('DELETE FROM task_statuses WHERE id = ?').run(id);
+    await supabase.from('task_statuses').delete().eq('id', id);
     
     return new Response(JSON.stringify({ success: true }), {
       status: 200,
