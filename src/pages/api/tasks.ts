@@ -93,6 +93,7 @@ export const POST: APIRoute = async ({ request }) => {
       priority = 'medium',
       due_date = null,
       tags = [],
+      status = '0cf19e7e-1614-486c-96a4-cd1cb2ea316f', // Valor por defecto
       order_index = 0,
       assigned_to = ''
     } = body;
@@ -126,6 +127,7 @@ export const POST: APIRoute = async ({ request }) => {
       priority,
       due_date,
       statusData: initialStatus.data,
+      status: initialStatus.data.id,
       tags: Array.isArray(tags) ? tags : [],
       order_index,
       assigned_to

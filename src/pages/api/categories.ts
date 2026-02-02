@@ -38,8 +38,6 @@ export const POST: APIRoute = async ({ request }) => {
         headers: { 'Content-Type': 'application/json' }
       });
     }
-
-    console.log(slug)
     
     const now = new Date().toISOString();
     

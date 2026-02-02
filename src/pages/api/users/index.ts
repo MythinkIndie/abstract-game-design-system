@@ -26,8 +26,6 @@ export const POST: APIRoute = async ({ request }) => {
         headers: { 'Content-Type': 'application/json' }
         });
     }
-    
-    console.log('Creating user');
 
     // Hash de la contraseña
     const hashedPassword = crypto.createHash('sha256').update(password).digest('hex');

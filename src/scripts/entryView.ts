@@ -107,7 +107,6 @@ document.querySelectorAll('.add-list-item-relation').forEach(btn => {
     const fieldName = (btn as HTMLElement).dataset.field!;
     const multiple = (btn as HTMLElement).dataset.multiple!;
     const input = document.querySelector(`[data-field-select-relation="${fieldName}"]`) as HTMLSelectElement;
-    console.log(input)
 
     if (input && input.value.trim()) {
       if (!currentData[fieldName]) currentData[fieldName] = [];
@@ -115,7 +114,7 @@ document.querySelectorAll('.add-list-item-relation').forEach(btn => {
         alert("You can't relation again the same item");
         return;
       }
-      console.log(currentData)
+
       if (multiple === 'true') {
         currentData[fieldName].push(input.value.trim());
       } else {

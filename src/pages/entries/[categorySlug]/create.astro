@@ -167,9 +167,6 @@ const fields = await supabase.from('fields').select('*').eq('category_id', (cate
     const categorySlug = document.body.dataset.categorySlug;
     const fieldsData = JSON.parse(document.body.dataset.fields || '[]');
     
-    console.log('Category ID:', categoryId);
-    console.log('Fields:', fieldsData);
-    
     const form = document.getElementById('entryForm');
     
     // Manejar listas dinámicas
@@ -213,15 +210,11 @@ const fields = await supabase.from('fields').select('*').eq('category_id', (cate
       const formData = new FormData(e.target as HTMLFormElement);
       const data: any = {};
       
-      console.log('Processing form...');
-      
       // Construir objeto de datos según los campos
       fieldsData.forEach((field: any) => {
     const fieldName = field.name;
     const fieldType = field.type;
     const fieldConfig = JSON.parse(field.config || '{}');
-    
-    console.log(`Processing field: ${fieldName} (type: ${fieldType})`);
     
     if (fieldType === 'boolean') {
       data[fieldName] = formData.has(fieldName);
@@ -269,8 +262,6 @@ const fields = await supabase.from('fields').select('*').eq('category_id', (cate
         const select = document.querySelector(`.relation-select[data-field="${fieldName}"]`) as HTMLSelectElement;
         data[fieldName] = select?.value || null;
       }
-      
-      console.log(`Relation field ${fieldName}:`, data[fieldName]);
     }
     else {
       // text, markdown, enum, etc.
@@ -281,16 +272,11 @@ const fields = await supabase.from('fields').select('*').eq('category_id', (cate
   // El título es obligatorio
   const title = data.title || 'Sin título';
   
-  console.log('Final data:', data);
-  console.log('Title:', title);
-  
   const payload = {
     category_id: categoryId,
     title: title,
     data: data
   };
-  
-  console.log('Sending payload:', payload);
   
   try {
     const response = await fetch('/api/entries', {
@@ -299,13 +285,9 @@ const fields = await supabase.from('fields').select('*').eq('category_id', (cate
       body: JSON.stringify(payload)
     });
     
-    console.log('Response status:', response.status);
-    
     const result = await response.json();
-    console.log('Response data:', result);
     
     if (response.ok) {
-      console.log('Success! Redirecting...');
       window.location.href = `/entries/${categorySlug}/${result.id}`;
     } else {
       console.error('Error from API:', result);

@@ -512,9 +512,6 @@ document.getElementById('fieldForm')?.addEventListener('submit', async (e) => {
     field_order: 999
   };
   
-  // Validación final antes de enviar
-  console.log('Enviando campo:', data);
-  
   try {
     const response = await fetch('/api/fields', {
       method: 'POST',
@@ -525,7 +522,6 @@ document.getElementById('fieldForm')?.addEventListener('submit', async (e) => {
     const result = await response.json();
     
     if (response.ok) {
-      console.log('✅ Campo creado exitosamente');
       window.location.reload();
     } else {
       console.error('❌ Error del servidor:', result);

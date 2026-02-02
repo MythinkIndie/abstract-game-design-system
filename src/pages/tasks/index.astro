@@ -193,15 +193,13 @@ if (taskCategory.data) {
           </thead>
           <tbody id="taskTableBody" class="divide-y divide-gray-200">
             {tasks.map((task: any) => {
-              if (task.subtasks.length === 0) {return (<></>)}
+              if (task.data.parent_task_id != null) return null; // Solo tareas principales
 
               const categoryName = task.data.related_category_id ? 
                 (() => {
                   const cat = categories.data.find((c: any) => c.id === task.data.related_category_id);
                   return cat ? (cat as any).name : '-';
                 })() : '-';
-              
-              console.log('Rendering task row for:', task);
 
               return (
                 <tr 
@@ -210,7 +208,7 @@ if (taskCategory.data) {
                   data-parent-id={task.data.parent_task_id || ''}
                   data-priority={task.data.priority}
                   data-category-id={task.data.related_category_id || ''}
-                  data-status={task.data.statusData.data.id || ''}
+                  data-status={task.data?.statusData?.id || ''}
                   data-title={task.data.title.toLowerCase()}
                   data-due-date={task.data.due_date || ''}
                   data-assigned={task.data.assigned_to || ''}
@@ -552,7 +550,9 @@ if (taskCategory.data) {
       try {
         const response = await fetch(`/api/tasks?parent_id=${parentId}`);
         const subtasks = await response.json();
-        console.log('Adding subtask row for:', subtasks, 'at level', level);
+
+        const responseCategories = await fetch(`/api/categories`);
+        const categories = await responseCategories.json();
         
         subtasks.forEach((subtask: any) => {
           const newRow = document.createElement('tr');
@@ -602,7 +602,10 @@ if (taskCategory.data) {
                 ${subtask.data.priority}
               </span>
             </td>
-            <td class="px-6 py-4 text-sm text-gray-500">-</td>
+            <td class="px-6 py-4 text-sm text-gray-500">${subtask.data.related_category_id ? (() => {
+              const category = categories.find(c => c.id === subtask.data.related_category_id);
+              return category ? category.name : '-';
+            })() : '-'}</td>
             <td class="px-6 py-4 text-sm text-gray-500">${subtask.data.assigned_to || '-'}</td>
             <td class="px-6 py-4 text-sm text-gray-500">${subtask.data.due_date ? new Date(subtask.data.due_date).toLocaleDateString('es-ES') : '-'}</td>
             <td class="px-6 py-3">

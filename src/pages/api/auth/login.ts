@@ -28,8 +28,6 @@ export const POST: APIRoute = async ({ request, cookies }) => {
         headers: { 'Content-Type': 'application/json' }
       });
     }
-    
-    console.log('appUserRow', appUserRow);
 
     // Verificar contraseña (hash SHA-256)
     const hashedPassword = crypto.createHash('sha256').update(password).digest('hex');

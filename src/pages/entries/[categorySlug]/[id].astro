@@ -24,8 +24,6 @@ try {
 } catch (e) {
   console.error('Error parsing entry data:', e);
 }
-
-console.log('Entry Data:', fields.data);
 // Calcular progreso
 const completionStates = await supabase.from('field_completion').select('field_id, is_complete, completion_notes').eq('entry_id', id);
 
@@ -44,7 +42,6 @@ const fieldsWithCompletion = (fields.data as any[]).map(field => {
 });
 
 const totalFields = fieldsWithCompletion.length;
-console.log('Fields with Completion:', fieldsWithCompletion);
 const completedFields = fieldsWithCompletion.filter(f => f.is_complete).length;
 const progress = totalFields > 0 ? Math.round((completedFields / totalFields) * 100) : 0;
 

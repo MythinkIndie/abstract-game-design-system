@@ -111,8 +111,6 @@ export const PUT: APIRoute = async ({ request }) => {
       ...(data !== undefined && { data: typeof data === 'string' ? data : JSON.stringify(data) }),
       ...(data !== undefined && {status_id: statusIsIdentifier ? data.status : null })
     }).eq('id', id);
-
-    console.log(error)
     
     const updatedEntry = await supabase.from('entries').select('*').eq('id', id).single();
     
